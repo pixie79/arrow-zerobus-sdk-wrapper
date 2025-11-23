@@ -5,11 +5,6 @@
 
 use crate::config::OtlpConfig;
 use crate::error::ZerobusError;
-use opentelemetry::metrics::Meter;
-use opentelemetry::trace::{Span, Tracer};
-use opentelemetry::KeyValue;
-use std::sync::Arc;
-use tracing::warn;
 
 #[cfg(feature = "observability")]
 use otlp_arrow_library::{Config as OtlpLibraryConfig, ConfigBuilder, OtlpLibrary};
@@ -38,7 +33,7 @@ impl ObservabilityManager {
     /// Returns `Some(ObservabilityManager)` if observability is enabled and
     /// initialization succeeds, or `None` if disabled or initialization fails.
     pub fn new(config: Option<OtlpConfig>) -> Option<Self> {
-        let config = match config {
+        let _config = match config {
             Some(c) => c,
             None => return None,
         };
@@ -61,7 +56,7 @@ impl ObservabilityManager {
     ///
     /// This method properly initializes the OtlpLibrary asynchronously.
     pub async fn new_async(config: Option<OtlpConfig>) -> Option<Self> {
-        let config = match config {
+        let _config = match config {
             Some(c) => c,
             None => return None,
         };

@@ -88,17 +88,6 @@ jobs:
             echo "hash=default" >> $GITHUB_OUTPUT
           fi
       
-      - name: Get Cargo.toml hash (macOS)
-        if: matrix.os == 'macos-latest'
-        id: cargo-hash
-        run: |
-          if [ -f "Cargo.toml" ]; then
-            HASH=$(shasum -a 256 Cargo.toml | cut -d' ' -f1 | head -c 16)
-            echo "hash=$HASH" >> $GITHUB_OUTPUT
-          else
-            echo "hash=default" >> $GITHUB_OUTPUT
-          fi
-      
       - name: Cache Cargo
         uses: actions/cache@v4
         with:

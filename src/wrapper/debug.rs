@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Debug file writer
 ///
@@ -183,7 +183,7 @@ impl DebugWriter {
             {
                 // Close current writer
                 let mut writer_guard = self.protobuf_writer.lock().await;
-                if let Some(mut file) = writer_guard.take() {
+                if let Some(file) = writer_guard.take() {
                     file.sync_all().map_err(|e| {
                         ZerobusError::ConfigurationError(format!(
                             "Failed to sync Protobuf file: {}",
@@ -310,7 +310,7 @@ impl DebugWriter {
     pub async fn flush(&self) -> Result<(), ZerobusError> {
         // Flush Arrow writer
         let mut arrow_guard = self.arrow_writer.lock().await;
-        if let Some(ref mut writer) = *arrow_guard {
+        if let Some(ref _writer) = *arrow_guard {
             // Arrow FileWriter doesn't have explicit flush, but we can ensure it's written
             // The writer buffers internally and writes on finish
         }

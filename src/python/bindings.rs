@@ -406,7 +406,7 @@ fn pyarrow_to_rust_batch(py: Python, batch: PyObject) -> PyResult<RecordBatch> {
 /// Uses PyArrow's IPC serialization as an efficient intermediate format.
 /// PyArrow's `to_pybytes()` serializes to Arrow IPC format, which can be
 /// efficiently deserialized in Rust without copying individual array elements.
-fn pyarrow_to_rust_batch_c_interface(py: Python, batch_ref: &PyAny) -> PyResult<RecordBatch> {
+fn pyarrow_to_rust_batch_c_interface(_py: Python, batch_ref: &PyAny) -> PyResult<RecordBatch> {
     use arrow::ipc::reader::StreamReader;
     use std::io::Cursor;
 
@@ -436,7 +436,7 @@ fn pyarrow_to_rust_batch_c_interface(py: Python, batch_ref: &PyAny) -> PyResult<
 /// Convert PyArrow RecordBatch using Python API (fallback method)
 fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<RecordBatch> {
     use arrow::array::*;
-    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::datatypes::{Field, Schema};
     use std::sync::Arc;
 
     // Get schema from PyArrow RecordBatch
@@ -500,7 +500,7 @@ fn pyarrow_type_to_rust_type(type_str: &str) -> PyResult<DataType> {
 
 /// Convert PyArrow array to Rust Arrow array
 fn pyarrow_array_to_rust_array(
-    py: Python,
+    _py: Python,
     array_obj: &PyAny,
     data_type: &DataType,
 ) -> PyResult<Arc<dyn arrow::array::Array>> {
