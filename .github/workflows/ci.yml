@@ -33,47 +33,43 @@ jobs:
             echo "External dependencies not available - creating stub to allow cargo to succeed"
             # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
             mkdir -p ../zerobus-sdk-rs/sdk
-            cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'EOF'
-[package]
-name = "databricks-zerobus-ingest-sdk"
-version = "0.1.0"
-edition = "2021"
-EOF
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
-            cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'EOF'
-// Stub for CI - actual SDK not available
-pub struct ZerobusSdk;
-pub struct ZerobusStream;
-pub struct StreamConfigurationOptions;
-pub struct TableProperties {
-    pub table_name: String,
-    pub descriptor_proto: Option<prost_types::DescriptorProto>,
-    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,
-}
-
-impl ZerobusSdk {
-    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {
-        Err("SDK not available in CI".to_string())
-    }
-    
-    pub async fn create_stream(
-        &self,
-        _table_properties: TableProperties,
-        _client_id: String,
-        _client_secret: String,
-        _options: Option<StreamConfigurationOptions>,
-    ) -> Result<ZerobusStream, String> {
-        Err("SDK not available in CI".to_string())
-    }
-}
-
-impl Default for StreamConfigurationOptions {
-    fn default() -> Self {
-        Self
-    }
-}
-EOF
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
           fi
       
       - name: Cache Cargo
@@ -133,49 +129,45 @@ EOF
             echo "External dependencies not available - creating stub to allow cargo to succeed"
             # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
             mkdir -p ../zerobus-sdk-rs/sdk
-            cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'EOF'
-[package]
-name = "databricks-zerobus-ingest-sdk"
-version = "0.1.0"
-edition = "2021"
-[dependencies]
-prost-types = "0.13"
-EOF
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
-            cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'EOF'
-// Stub for CI - actual SDK not available
-pub struct ZerobusSdk;
-pub struct ZerobusStream;
-pub struct StreamConfigurationOptions;
-pub struct TableProperties {
-    pub table_name: String,
-    pub descriptor_proto: Option<prost_types::DescriptorProto>,
-    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,
-}
-
-impl ZerobusSdk {
-    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {
-        Err("SDK not available in CI".to_string())
-    }
-    
-    pub async fn create_stream(
-        &self,
-        _table_properties: TableProperties,
-        _client_id: String,
-        _client_secret: String,
-        _options: Option<StreamConfigurationOptions>,
-    ) -> Result<ZerobusStream, String> {
-        Err("SDK not available in CI".to_string())
-    }
-}
-
-impl Default for StreamConfigurationOptions {
-    fn default() -> Self {
-        Self
-    }
-}
-EOF
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
           fi
       
       - name: Build Python bindings
@@ -210,49 +202,45 @@ EOF
             echo "External dependencies not available - creating stub to allow cargo to succeed"
             # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
             mkdir -p ../zerobus-sdk-rs/sdk
-            cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'EOF'
-[package]
-name = "databricks-zerobus-ingest-sdk"
-version = "0.1.0"
-edition = "2021"
-[dependencies]
-prost-types = "0.13"
-EOF
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
-            cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'EOF'
-// Stub for CI - actual SDK not available
-pub struct ZerobusSdk;
-pub struct ZerobusStream;
-pub struct StreamConfigurationOptions;
-pub struct TableProperties {
-    pub table_name: String,
-    pub descriptor_proto: Option<prost_types::DescriptorProto>,
-    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,
-}
-
-impl ZerobusSdk {
-    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {
-        Err("SDK not available in CI".to_string())
-    }
-    
-    pub async fn create_stream(
-        &self,
-        _table_properties: TableProperties,
-        _client_id: String,
-        _client_secret: String,
-        _options: Option<StreamConfigurationOptions>,
-    ) -> Result<ZerobusStream, String> {
-        Err("SDK not available in CI".to_string())
-    }
-}
-
-impl Default for StreamConfigurationOptions {
-    fn default() -> Self {
-        Self
-    }
-}
-EOF
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
           fi
       
       - name: Cache Cargo
@@ -271,4 +259,3 @@ EOF
           # Benchmarks are structured but may require mock SDK for full execution
           # For now, we'll just verify they compile
           cargo check --benches || echo "Benchmarks compilation check completed"
-
