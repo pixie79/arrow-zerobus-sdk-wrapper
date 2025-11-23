@@ -363,7 +363,7 @@ impl ZerobusWrapper {
 
         let mut stream_guard = self.stream.lock().await;
         if stream_guard.is_none() {
-            let stream = crate::wrapper::zerobus::ensure_stream(
+            let _stream = crate::wrapper::zerobus::ensure_stream(
                 sdk,
                 self.config.table_name.clone(),
                 file_descriptor_proto,
@@ -371,9 +371,9 @@ impl ZerobusWrapper {
                 client_secret.clone(),
             )
             .await?;
-            *stream_guard = Some(stream);
+            *stream_guard = Some(_stream);
         }
-        let stream = stream_guard.as_ref().unwrap();
+        let _stream = stream_guard.as_ref().unwrap();
 
         // 5. Write each row to Zerobus
         // TODO: Replace with actual Zerobus SDK method once API is confirmed
