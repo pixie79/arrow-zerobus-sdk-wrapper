@@ -46,7 +46,7 @@ opentelemetry-proto = "0.31"
 # OTLP Arrow Library (git dependency)
 # Optional: Only used when observability is enabled
 # Repository: https://github.com/pixie79/otlp-rust-service
-otlp-arrow-library = { git = "https://github.com/pixie79/otlp-rust-service.git", branch = "001-otlp-arrow-library", optional = true }
+otlp-arrow-library = { git = "https://github.com/pixie79/otlp-rust-service.git", branch = "main", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

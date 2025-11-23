@@ -15,6 +15,10 @@
 - Q: When authentication tokens expire during long-running operations, should the wrapper automatically refresh them, or require the caller to re-authenticate? → A: Automatic token refresh: Wrapper detects expiration, refreshes token transparently, and retries the operation
 - Q: What is the minimum Python version requirement? → A: Python 3.11+ (minimum supported version)
 
+### Session 2025-01-27
+
+- Q: Which branch of otlp-rust-service should be used, and what Python version should macOS CI builds use? → A: Use main branch of https://github.com/pixie79/otlp-rust-service (has fixes for ResourceMetrics issues). macOS CI builds must use Python 3.11
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Send Data to Zerobus from Rust Application (Priority: P1)
@@ -110,7 +114,7 @@ A developer needs to debug data transformation issues by inspecting the exact da
 - **FR-008**: System MUST support cross-platform operation (Linux, macOS, Windows)
 - **FR-009**: System MUST integrate OpenTelemetry metrics collection for operation monitoring
 - **FR-010**: System MUST integrate OpenTelemetry trace collection for operation observability
-- **FR-011**: System MUST use the otlp-rust-service library for OpenTelemetry functionality
+- **FR-011**: System MUST use the otlp-rust-service library (main branch) for OpenTelemetry functionality
 - **FR-012**: System MUST provide configuration to enable or disable debug file output (default: disabled)
 - **FR-013**: System MUST write Arrow RecordBatch debug files to {OUTPUT_DIR}/zerobus/arrow/table.arrow when enabled
 - **FR-014**: System MUST write Protobuf debug files to {OUTPUT_DIR}/zerobus/proto/table.proto when enabled
