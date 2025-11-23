@@ -81,7 +81,6 @@ crate-type = ["cdylib", "rlib"]
 default = []
 python = ["pyo3/auto-initialize"]
 observability = ["otlp-arrow-library"]
-zerobus-sdk = ["databricks-zerobus-ingest-sdk"]
 
 [dev-dependencies]
 tempfile = "3.8"
