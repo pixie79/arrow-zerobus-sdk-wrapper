@@ -155,8 +155,6 @@ jobs:
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
             echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
@@ -231,8 +229,6 @@ jobs:
             echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
