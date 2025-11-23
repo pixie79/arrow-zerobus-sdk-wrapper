@@ -43,6 +43,8 @@ jobs:
             echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             mkdir -p ../zerobus-sdk-rs/sdk/src
             echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
             echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
@@ -153,6 +155,8 @@ jobs:
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
             echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
@@ -196,6 +200,9 @@ jobs:
       - name: Install Python package
         run: pip install target/wheels/*.whl
       
+      - name: Install pytest
+        run: pip install pytest pytest-cov
+      
       - name: Run Python tests
         run: pytest tests/python/
 
@@ -224,6 +231,8 @@ jobs:
             echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             # Create a minimal lib.rs
