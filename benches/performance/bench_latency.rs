@@ -3,10 +3,10 @@
 //! Measures p95 latency for batches up to 10MB
 //! Target: p95 latency under 150ms
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::sync::Arc;
 
 fn create_test_batch(size_mb: usize) -> RecordBatch {
@@ -18,21 +18,21 @@ fn create_test_batch(size_mb: usize) -> RecordBatch {
         10 => 100_000,
         _ => 10_000,
     };
-    
+
     let schema = Schema::new(vec![
         Field::new("id", DataType::Int64, false),
         Field::new("name", DataType::Utf8, false),
         Field::new("value", DataType::Int64, false),
     ]);
-    
+
     let id_array = Int64Array::from((0..num_rows).map(|i| i as i64).collect::<Vec<_>>());
     let name_array = StringArray::from(
         (0..num_rows)
             .map(|i| format!("name_{}", i))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>(),
     );
     let value_array = Int64Array::from((0..num_rows).map(|i| i as i64).collect::<Vec<_>>());
-    
+
     RecordBatch::try_new(
         Arc::new(schema),
         vec![
@@ -46,11 +46,11 @@ fn create_test_batch(size_mb: usize) -> RecordBatch {
 
 fn bench_latency(c: &mut Criterion) {
     let mut group = c.benchmark_group("latency");
-    
+
     // Benchmark different batch sizes
     for size_mb in [1, 5, 10] {
         let batch = create_test_batch(size_mb);
-        
+
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}MB", size_mb)),
             &batch,
@@ -65,10 +65,9 @@ fn bench_latency(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 
 criterion_group!(benches, bench_latency);
 criterion_main!(benches);
-

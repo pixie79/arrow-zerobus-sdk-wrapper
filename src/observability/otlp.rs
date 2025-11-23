@@ -5,14 +5,14 @@
 
 use crate::config::OtlpConfig;
 use crate::error::ZerobusError;
-use opentelemetry::trace::{Span, Tracer};
 use opentelemetry::metrics::Meter;
+use opentelemetry::trace::{Span, Tracer};
 use opentelemetry::KeyValue;
 use std::sync::Arc;
 use tracing::warn;
 
 #[cfg(feature = "observability")]
-use otlp_arrow_library::{OtlpLibrary, Config as OtlpLibraryConfig, ConfigBuilder};
+use otlp_arrow_library::{Config as OtlpLibraryConfig, ConfigBuilder, OtlpLibrary};
 
 /// Observability manager for collecting metrics and traces
 ///
@@ -69,7 +69,7 @@ impl ObservabilityManager {
         #[cfg(feature = "observability")]
         {
             let library_config = Self::convert_config(config);
-            
+
             match OtlpLibrary::new(library_config).await {
                 Ok(library) => Some(Self {
                     library: Some(Arc::new(library)),
@@ -92,20 +92,21 @@ impl ObservabilityManager {
     fn convert_config(config: OtlpConfig) -> OtlpLibraryConfig {
         use otlp_arrow_library::ConfigBuilder;
         use std::path::PathBuf;
-        
+
         let mut builder = ConfigBuilder::default();
-        
+
         // Set output directory (default to /tmp/otlp if not specified)
-        let output_dir = config.endpoint
+        let output_dir = config
+            .endpoint
             .as_ref()
             .map(|_| PathBuf::from("/tmp/otlp"))
             .unwrap_or_else(|| PathBuf::from("/tmp/otlp"));
-        
+
         builder = builder.output_dir(output_dir);
-        
+
         // Set write interval (default 5 seconds)
         builder = builder.write_interval_secs(5);
-        
+
         // Build config, using defaults if build fails
         builder.build().unwrap_or_else(|_| {
             // Fallback to default config if build fails
@@ -126,7 +127,7 @@ impl ObservabilityManager {
             if let Some(library) = &self.library {
                 // Create ResourceMetrics for export
                 let metrics = Self::create_batch_metrics(batch_size_bytes, success, latency_ms);
-                
+
                 // Export metrics using otlp-arrow-library
                 if let Err(e) = library.export_metrics(metrics).await {
                     tracing::warn!("Failed to export metrics: {}", e);
@@ -145,11 +146,15 @@ impl ObservabilityManager {
     /// Creates a minimal ResourceMetrics structure that can be exported.
     /// Note: ResourceMetrics fields are private in OpenTelemetry SDK 0.31.
     /// We use ResourceMetrics::default() as shown in otlp-rust-service examples.
-    /// 
+    ///
     /// The actual metric values (batch_size_bytes, success, latency_ms) are
     /// logged via tracing and will be exported via the observability infrastructure.
     #[cfg(feature = "observability")]
-    fn create_batch_metrics(batch_size_bytes: usize, success: bool, latency_ms: u64) -> opentelemetry_sdk::metrics::data::ResourceMetrics {
+    fn create_batch_metrics(
+        batch_size_bytes: usize,
+        success: bool,
+        latency_ms: u64,
+    ) -> opentelemetry_sdk::metrics::data::ResourceMetrics {
         // Log metrics via tracing (will be picked up by observability infrastructure)
         tracing::info!(
             batch_size_bytes = batch_size_bytes,
@@ -197,8 +202,12 @@ impl ObservabilityManager {
         #[cfg(feature = "observability")]
         {
             if let Some(library) = &self.library {
-                library.flush().await
-                    .map_err(|e| ZerobusError::ConfigurationError(format!("Failed to flush observability data: {}", e)))?;
+                library.flush().await.map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to flush observability data: {}",
+                        e
+                    ))
+                })?;
             }
         }
         Ok(())
@@ -209,8 +218,12 @@ impl ObservabilityManager {
         #[cfg(feature = "observability")]
         {
             if let Some(library) = &self.library {
-                library.shutdown().await
-                    .map_err(|e| ZerobusError::ConfigurationError(format!("Failed to shutdown observability: {}", e)))?;
+                library.shutdown().await.map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to shutdown observability: {}",
+                        e
+                    ))
+                })?;
             }
         }
         Ok(())
@@ -249,20 +262,22 @@ impl Drop for ObservabilitySpan {
 impl ObservabilitySpan {
     #[cfg(feature = "observability")]
     fn create_span_data(table_name: &str) -> opentelemetry_sdk::trace::SpanData {
+        use opentelemetry::trace::{
+            SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState,
+        };
         use opentelemetry::KeyValue;
         use opentelemetry_sdk::Resource;
-        use opentelemetry::trace::{SpanContext, TraceId, SpanId, TraceFlags, TraceState, SpanKind, Status};
-        use std::time::{SystemTime, Duration};
+        use std::time::{Duration, SystemTime};
 
         // Generate random trace and span IDs
         use rand::Rng;
         let mut rng = rand::thread_rng();
         let trace_bytes: [u8; 16] = rng.gen();
         let span_bytes: [u8; 8] = rng.gen();
-        
+
         let trace_id = TraceId::from_bytes(trace_bytes);
         let span_id = SpanId::from_bytes(span_bytes);
-        
+
         let span_context = SpanContext::new(
             trace_id,
             span_id,
@@ -281,17 +296,17 @@ impl ObservabilitySpan {
             name: std::borrow::Cow::Owned("zerobus.send_batch".to_string()),
             start_time: SystemTime::now(),
             end_time: SystemTime::now() + Duration::from_millis(1),
-            attributes: vec![
-                KeyValue::new("table.name", table_name.to_string()),
-            ],
+            attributes: vec![KeyValue::new("table.name", table_name.to_string())],
             events: opentelemetry_sdk::trace::SpanEvents::default(),
             links: opentelemetry_sdk::trace::SpanLinks::default(),
             status: Status::Ok,
             dropped_attributes_count: 0,
             parent_span_is_remote: false,
-            instrumentation_scope: opentelemetry::InstrumentationScope::builder("arrow-zerobus-sdk-wrapper")
-                .with_version(env!("CARGO_PKG_VERSION"))
-                .build(),
+            instrumentation_scope: opentelemetry::InstrumentationScope::builder(
+                "arrow-zerobus-sdk-wrapper",
+            )
+            .with_version(env!("CARGO_PKG_VERSION"))
+            .build(),
         }
     }
 }

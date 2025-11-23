@@ -2,8 +2,8 @@
 //!
 //! This module handles loading configuration from YAML files and environment variables.
 
-use crate::error::ZerobusError;
 use crate::config::WrapperConfiguration;
+use crate::error::ZerobusError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -59,22 +59,17 @@ pub fn load_from_yaml<P: AsRef<Path>>(path: P) -> Result<WrapperConfiguration, Z
         ))
     })?;
 
-    let yaml: ConfigYaml = serde_yaml::from_str(&content).map_err(|e| {
-        ZerobusError::ConfigurationError(format!("Failed to parse YAML: {}", e))
-    })?;
+    let yaml: ConfigYaml = serde_yaml::from_str(&content)
+        .map_err(|e| ZerobusError::ConfigurationError(format!("Failed to parse YAML: {}", e)))?;
 
     let mut config = WrapperConfiguration::new(
         yaml.zerobus_endpoint
             .ok_or_else(|| {
-                ZerobusError::ConfigurationError(
-                    "zerobus_endpoint is required".to_string(),
-                )
+                ZerobusError::ConfigurationError("zerobus_endpoint is required".to_string())
             })?
             .clone(),
         yaml.table_name
-            .ok_or_else(|| {
-                ZerobusError::ConfigurationError("table_name is required".to_string())
-            })?
+            .ok_or_else(|| ZerobusError::ConfigurationError("table_name is required".to_string()))?
             .clone(),
     );
 
@@ -135,15 +130,17 @@ pub fn load_from_yaml<P: AsRef<Path>>(path: P) -> Result<WrapperConfiguration, Z
 ///
 /// Returns `WrapperConfiguration` if successful, or `ZerobusError` if loading fails.
 pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
-    let endpoint = std::env::var("ZEROBUS_ENDPOINT")
-        .map_err(|_| {
-            ZerobusError::ConfigurationError("ZEROBUS_ENDPOINT environment variable is required".to_string())
-        })?;
+    let endpoint = std::env::var("ZEROBUS_ENDPOINT").map_err(|_| {
+        ZerobusError::ConfigurationError(
+            "ZEROBUS_ENDPOINT environment variable is required".to_string(),
+        )
+    })?;
 
-    let table_name = std::env::var("ZEROBUS_TABLE_NAME")
-        .map_err(|_| {
-            ZerobusError::ConfigurationError("ZEROBUS_TABLE_NAME environment variable is required".to_string())
-        })?;
+    let table_name = std::env::var("ZEROBUS_TABLE_NAME").map_err(|_| {
+        ZerobusError::ConfigurationError(
+            "ZEROBUS_TABLE_NAME environment variable is required".to_string(),
+        )
+    })?;
 
     let mut config = WrapperConfiguration::new(endpoint, table_name);
 
@@ -151,9 +148,10 @@ pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
         config = config.with_unity_catalog(url);
     }
 
-    if let (Ok(client_id), Ok(client_secret)) =
-        (std::env::var("ZEROBUS_CLIENT_ID"), std::env::var("ZEROBUS_CLIENT_SECRET"))
-    {
+    if let (Ok(client_id), Ok(client_secret)) = (
+        std::env::var("ZEROBUS_CLIENT_ID"),
+        std::env::var("ZEROBUS_CLIENT_SECRET"),
+    ) {
         config = config.with_credentials(client_id, client_secret);
     }
 
@@ -183,9 +181,11 @@ pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
         std::env::var("RETRY_BASE_DELAY_MS"),
         std::env::var("RETRY_MAX_DELAY_MS"),
     ) {
-        if let (Ok(max_u32), Ok(base_u64), Ok(max_delay_u64)) =
-            (max.parse::<u32>(), base.parse::<u64>(), max_delay.parse::<u64>())
-        {
+        if let (Ok(max_u32), Ok(base_u64), Ok(max_delay_u64)) = (
+            max.parse::<u32>(),
+            base.parse::<u64>(),
+            max_delay.parse::<u64>(),
+        ) {
             config = config.with_retry_config(max_u32, base_u64, max_delay_u64);
         }
     }
@@ -193,4 +193,3 @@ pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
     config.validate()?;
     Ok(config)
 }
-

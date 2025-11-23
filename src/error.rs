@@ -75,4 +75,3 @@ impl ZerobusError {
         matches!(self, ZerobusError::AuthenticationError(_))
     }
 }
-

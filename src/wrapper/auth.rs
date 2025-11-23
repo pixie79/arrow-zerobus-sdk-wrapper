@@ -63,11 +63,9 @@ pub async fn refresh_token(
     debug!("Token endpoint: {}", token_url);
 
     // Prepare OAuth2 client credentials request
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| {
-            ZerobusError::TokenRefreshError(format!("Failed to create HTTP client: {}", e))
-        })?;
+    let client = reqwest::Client::builder().build().map_err(|e| {
+        ZerobusError::TokenRefreshError(format!("Failed to create HTTP client: {}", e))
+    })?;
 
     let params = [
         ("grant_type", "client_credentials"),
@@ -82,10 +80,7 @@ pub async fn refresh_token(
         .send()
         .await
         .map_err(|e| {
-            ZerobusError::TokenRefreshError(format!(
-                "Failed to send token refresh request: {}",
-                e
-            ))
+            ZerobusError::TokenRefreshError(format!("Failed to send token refresh request: {}", e))
         })?;
 
     // Check response status
@@ -95,7 +90,7 @@ pub async fn refresh_token(
             .text()
             .await
             .unwrap_or_else(|_| "Unknown error".to_string());
-        
+
         warn!(
             "Token refresh failed with status {}: {}",
             status, error_text
@@ -108,15 +103,9 @@ pub async fn refresh_token(
     }
 
     // Parse token response
-    let token_response: TokenResponse = response
-        .json()
-        .await
-        .map_err(|e| {
-            ZerobusError::TokenRefreshError(format!(
-                "Failed to parse token response: {}",
-                e
-            ))
-        })?;
+    let token_response: TokenResponse = response.json().await.map_err(|e| {
+        ZerobusError::TokenRefreshError(format!("Failed to parse token response: {}", e))
+    })?;
 
     debug!(
         "Token refresh successful, expires_in: {:?}",

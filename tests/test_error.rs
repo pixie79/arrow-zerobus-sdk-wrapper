@@ -51,4 +51,3 @@ fn test_all_error_variants() {
     let _retry = ZerobusError::RetryExhausted("retry".to_string());
     let _token = ZerobusError::TokenRefreshError("token".to_string());
 }
-

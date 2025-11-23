@@ -94,18 +94,15 @@ impl DebugWriter {
                     e
                 ))
             })?;
-            
+
             let schema = arrow::datatypes::Schema::empty();
-            let writer = arrow::ipc::writer::FileWriter::try_new(
-                file,
-                &schema,
-            ).map_err(|e| {
+            let writer = arrow::ipc::writer::FileWriter::try_new(file, &schema).map_err(|e| {
                 ZerobusError::ConfigurationError(format!(
                     "Failed to create Arrow IPC writer: {}",
                     e
                 ))
             })?;
-            
+
             *writer_guard = Some(writer);
         }
         Ok(())
@@ -129,11 +126,14 @@ impl DebugWriter {
     /// Rotate Arrow file if needed
     async fn rotate_arrow_file_if_needed(&self) -> Result<(), ZerobusError> {
         if let Some(max_size) = self.max_file_size {
-            if let Some(new_path) = rotate_file_if_needed(&self.arrow_file_path, max_size)
-                .map_err(|e| ZerobusError::ConfigurationError(format!(
-                    "Failed to check Arrow file size: {}",
-                    e
-                )))? {
+            if let Some(new_path) =
+                rotate_file_if_needed(&self.arrow_file_path, max_size).map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to check Arrow file size: {}",
+                        e
+                    ))
+                })?
+            {
                 // Close current writer
                 let mut writer_guard = self.arrow_writer.lock().await;
                 if let Some(mut writer) = writer_guard.take() {
@@ -144,7 +144,7 @@ impl DebugWriter {
                         ))
                     })?;
                 }
-                
+
                 // Update file path and create new writer
                 // Note: We'd need to update arrow_file_path, but it's immutable
                 // For now, we'll create a new file with the rotated name
@@ -154,18 +154,16 @@ impl DebugWriter {
                         e
                     ))
                 })?;
-                
+
                 let schema = arrow::datatypes::Schema::empty();
-                let writer = arrow::ipc::writer::FileWriter::try_new(
-                    file,
-                    &schema,
-                ).map_err(|e| {
-                    ZerobusError::ConfigurationError(format!(
-                        "Failed to create rotated Arrow IPC writer: {}",
-                        e
-                    ))
-                })?;
-                
+                let writer =
+                    arrow::ipc::writer::FileWriter::try_new(file, &schema).map_err(|e| {
+                        ZerobusError::ConfigurationError(format!(
+                            "Failed to create rotated Arrow IPC writer: {}",
+                            e
+                        ))
+                    })?;
+
                 *writer_guard = Some(writer);
             }
         }
@@ -176,10 +174,13 @@ impl DebugWriter {
     async fn rotate_protobuf_file_if_needed(&self) -> Result<(), ZerobusError> {
         if let Some(max_size) = self.max_file_size {
             if let Some(new_path) = rotate_file_if_needed(&self.protobuf_file_path, max_size)
-                .map_err(|e| ZerobusError::ConfigurationError(format!(
-                    "Failed to check Protobuf file size: {}",
-                    e
-                )))? {
+                .map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to check Protobuf file size: {}",
+                        e
+                    ))
+                })?
+            {
                 // Close current writer
                 let mut writer_guard = self.protobuf_writer.lock().await;
                 if let Some(mut file) = writer_guard.take() {
@@ -190,7 +191,7 @@ impl DebugWriter {
                         ))
                     })?;
                 }
-                
+
                 // Create new file
                 let file = std::fs::File::create(&new_path).map_err(|e| {
                     ZerobusError::ConfigurationError(format!(
@@ -198,7 +199,7 @@ impl DebugWriter {
                         e
                     ))
                 })?;
-                
+
                 *writer_guard = Some(file);
             }
         }
@@ -217,10 +218,10 @@ impl DebugWriter {
     pub async fn write_arrow(&self, batch: &RecordBatch) -> Result<(), ZerobusError> {
         // Check if rotation is needed
         self.rotate_arrow_file_if_needed().await?;
-        
+
         // Ensure writer is initialized
         self.ensure_arrow_writer().await?;
-        
+
         // Write batch
         let mut writer_guard = self.arrow_writer.lock().await;
         if let Some(ref mut writer) = *writer_guard {
@@ -234,22 +235,20 @@ impl DebugWriter {
                         e
                     ))
                 })?;
-                
-                let writer = arrow::ipc::writer::FileWriter::try_new(
-                    file,
-                    batch.schema().as_ref(),
-                ).map_err(|e| {
-                    ZerobusError::ConfigurationError(format!(
-                        "Failed to create Arrow IPC writer with schema: {}",
-                        e
-                    ))
-                })?;
-                
+
+                let writer = arrow::ipc::writer::FileWriter::try_new(file, batch.schema().as_ref())
+                    .map_err(|e| {
+                        ZerobusError::ConfigurationError(format!(
+                            "Failed to create Arrow IPC writer with schema: {}",
+                            e
+                        ))
+                    })?;
+
                 let mut new_guard = self.arrow_writer.lock().await;
                 *new_guard = Some(writer);
                 writer_guard = new_guard;
             }
-            
+
             if let Some(ref mut writer) = *writer_guard {
                 writer.write(batch).map_err(|e| {
                     ZerobusError::ConfigurationError(format!(
@@ -259,7 +258,7 @@ impl DebugWriter {
                 })?;
             }
         }
-        
+
         debug!("Wrote Arrow RecordBatch to debug file");
         Ok(())
     }
@@ -276,20 +275,17 @@ impl DebugWriter {
     pub async fn write_protobuf(&self, protobuf_bytes: &[u8]) -> Result<(), ZerobusError> {
         // Check if rotation is needed
         self.rotate_protobuf_file_if_needed().await?;
-        
+
         // Ensure writer is initialized
         self.ensure_protobuf_writer().await?;
-        
+
         // Write bytes
         let mut writer_guard = self.protobuf_writer.lock().await;
         if let Some(ref mut file) = *writer_guard {
             file.write_all(protobuf_bytes).map_err(|e| {
-                ZerobusError::ConfigurationError(format!(
-                    "Failed to write Protobuf bytes: {}",
-                    e
-                ))
+                ZerobusError::ConfigurationError(format!("Failed to write Protobuf bytes: {}", e))
             })?;
-            
+
             // Write newline separator for readability (optional)
             file.write_all(b"\n").map_err(|e| {
                 ZerobusError::ConfigurationError(format!(
@@ -298,8 +294,11 @@ impl DebugWriter {
                 ))
             })?;
         }
-        
-        debug!("Wrote {} bytes to Protobuf debug file", protobuf_bytes.len());
+
+        debug!(
+            "Wrote {} bytes to Protobuf debug file",
+            protobuf_bytes.len()
+        );
         Ok(())
     }
 
@@ -316,23 +315,20 @@ impl DebugWriter {
             // The writer buffers internally and writes on finish
         }
         drop(arrow_guard);
-        
+
         // Flush Protobuf writer
         let mut proto_guard = self.protobuf_writer.lock().await;
         if let Some(ref mut file) = *proto_guard {
             file.sync_all().map_err(|e| {
-                ZerobusError::ConfigurationError(format!(
-                    "Failed to sync Protobuf file: {}",
-                    e
-                ))
+                ZerobusError::ConfigurationError(format!("Failed to sync Protobuf file: {}", e))
             })?;
         }
         drop(proto_guard);
-        
+
         // Update last flush time
         let mut last_flush = self.last_flush.lock().await;
         *last_flush = Instant::now();
-        
+
         debug!("Flushed debug files to disk");
         Ok(())
     }
@@ -347,4 +343,3 @@ impl DebugWriter {
         last_flush.elapsed() >= self.flush_interval
     }
 }
-

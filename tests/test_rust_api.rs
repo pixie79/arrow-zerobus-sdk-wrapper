@@ -8,12 +8,12 @@
 //! 5. Verify result
 //! 6. Shutdown wrapper
 
-use arrow_zerobus_sdk_wrapper::{
-    WrapperConfiguration, ZerobusWrapper, ZerobusError, TransmissionResult,
-};
-use arrow::array::{Int64Array, StringArray, Float64Array};
+use arrow::array::{Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use arrow_zerobus_sdk_wrapper::{
+    TransmissionResult, WrapperConfiguration, ZerobusError, ZerobusWrapper,
+};
 use std::sync::Arc;
 
 /// Create a test RecordBatch with sample data
@@ -26,7 +26,8 @@ fn create_test_record_batch() -> RecordBatch {
 
     let id_array = Int64Array::from(vec![1, 2, 3, 4, 5]);
     let name_array = StringArray::from(vec!["Alice", "Bob", "Charlie", "David", "Eve"]);
-    let score_array = Float64Array::from(vec![Some(95.5), Some(87.0), None, Some(92.5), Some(88.0)]);
+    let score_array =
+        Float64Array::from(vec![Some(95.5), Some(87.0), None, Some(92.5), Some(88.0)]);
 
     RecordBatch::try_new(
         Arc::new(schema),
@@ -49,10 +50,8 @@ async fn test_complete_user_journey() {
         "test_table".to_string(),
     )
     .with_credentials(
-        std::env::var("ZEROBUS_CLIENT_ID")
-            .unwrap_or_else(|_| "test_client_id".to_string()),
-        std::env::var("ZEROBUS_CLIENT_SECRET")
-            .unwrap_or_else(|_| "test_client_secret".to_string()),
+        std::env::var("ZEROBUS_CLIENT_ID").unwrap_or_else(|_| "test_client_id".to_string()),
+        std::env::var("ZEROBUS_CLIENT_SECRET").unwrap_or_else(|_| "test_client_secret".to_string()),
     )
     .with_unity_catalog(
         std::env::var("UNITY_CATALOG_URL")
@@ -62,7 +61,7 @@ async fn test_complete_user_journey() {
 
     // Step 2: Initialize wrapper
     let wrapper_result = ZerobusWrapper::new(config).await;
-    
+
     // Without real credentials, this will fail, but we can test the flow
     match wrapper_result {
         Ok(wrapper) => {
@@ -80,7 +79,7 @@ async fn test_complete_user_journey() {
                     // Verify TransmissionResult structure
                     assert!(transmission_result.batch_size_bytes > 0);
                     assert!(transmission_result.attempts >= 1);
-                    
+
                     if transmission_result.success {
                         assert!(transmission_result.error.is_none());
                         assert!(transmission_result.latency_ms.is_some());
@@ -91,10 +90,7 @@ async fn test_complete_user_journey() {
                         );
                     } else {
                         assert!(transmission_result.error.is_some());
-                        println!(
-                            "❌ Transmission failed: {:?}",
-                            transmission_result.error
-                        );
+                        println!("❌ Transmission failed: {:?}", transmission_result.error);
                     }
                 }
                 Err(e) => {
@@ -109,7 +105,10 @@ async fn test_complete_user_journey() {
         }
         Err(e) => {
             // Initialization failure is expected without real credentials
-            println!("⚠️  Wrapper initialization failed (expected in test): {}", e);
+            println!(
+                "⚠️  Wrapper initialization failed (expected in test): {}",
+                e
+            );
         }
     }
 }
@@ -140,10 +139,7 @@ fn test_user_journey_configuration_validation() {
 #[tokio::test]
 async fn test_user_journey_error_handling() {
     // Test that configuration errors are properly returned
-    let config = WrapperConfiguration::new(
-        "invalid".to_string(),
-        "test_table".to_string(),
-    );
+    let config = WrapperConfiguration::new("invalid".to_string(), "test_table".to_string());
 
     // Validation should fail
     assert!(config.validate().is_err());
@@ -196,7 +192,7 @@ async fn test_user_journey_retry_behavior() {
 
     // Test that retry config works as expected
     let retry_config = RetryConfig::new(3, 10, 1000);
-    
+
     let attempts = std::sync::Arc::new(std::sync::Mutex::new(0));
     let attempts_clone = attempts.clone();
     let result = retry_config
@@ -207,7 +203,7 @@ async fn test_user_journey_retry_behavior() {
                 *count += 1;
                 let current = *count;
                 drop(count);
-                
+
                 if current < 2 {
                     Err::<String, _>(ZerobusError::ConnectionError("transient".to_string()))
                 } else {
@@ -232,14 +228,13 @@ async fn test_user_journey_concurrent_access() {
     .with_unity_catalog("https://unity-catalog-url".to_string());
 
     let wrapper_result = ZerobusWrapper::new(config).await;
-    
+
     if let Ok(wrapper) = wrapper_result {
         // Test that wrapper can be cloned (for concurrent access)
         let wrapper_clone = wrapper.clone();
-        
+
         // Both should be usable (though will fail without real SDK)
         let _flush1 = wrapper.flush().await;
         let _flush2 = wrapper_clone.flush().await;
     }
 }
-

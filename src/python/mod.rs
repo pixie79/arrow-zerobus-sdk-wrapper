@@ -16,4 +16,3 @@ fn arrow_zerobus_sdk_wrapper(_py: Python, m: &PyModule) -> PyResult<()> {
     bindings::register_module(_py, m)?;
     Ok(())
 }
-

@@ -3,10 +3,10 @@
 //! Measures throughput and success rate
 //! Target: 99.999% success rate under normal network conditions
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use std::sync::Arc;
 
 fn create_test_batch(num_rows: usize) -> RecordBatch {
@@ -15,15 +15,15 @@ fn create_test_batch(num_rows: usize) -> RecordBatch {
         Field::new("name", DataType::Utf8, false),
         Field::new("value", DataType::Int64, false),
     ]);
-    
+
     let id_array = Int64Array::from((0..num_rows).map(|i| i as i64).collect::<Vec<_>>());
     let name_array = StringArray::from(
         (0..num_rows)
             .map(|i| format!("name_{}", i))
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>(),
     );
     let value_array = Int64Array::from((0..num_rows).map(|i| i as i64).collect::<Vec<_>>());
-    
+
     RecordBatch::try_new(
         Arc::new(schema),
         vec![
@@ -37,11 +37,11 @@ fn create_test_batch(num_rows: usize) -> RecordBatch {
 
 fn bench_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("throughput");
-    
+
     // Benchmark different batch sizes for throughput
     for batch_size in [100, 1000, 10000] {
         let batch = create_test_batch(batch_size);
-        
+
         group.bench_with_input(
             BenchmarkId::from_parameter(format!("{}_rows", batch_size)),
             &batch,
@@ -58,7 +58,7 @@ fn bench_throughput(c: &mut Criterion) {
             },
         );
     }
-    
+
     group.finish();
 }
 

@@ -4,7 +4,9 @@
 //! including stream creation and management.
 
 use crate::error::ZerobusError;
-use databricks_zerobus_ingest_sdk::{ZerobusSdk, ZerobusStream, StreamConfigurationOptions, TableProperties};
+use databricks_zerobus_ingest_sdk::{
+    StreamConfigurationOptions, TableProperties, ZerobusSdk, ZerobusStream,
+};
 use prost_types::FileDescriptorProto;
 use tracing::{debug, info};
 
@@ -23,14 +25,10 @@ pub async fn create_sdk(
     unity_catalog_url: String,
 ) -> Result<ZerobusSdk, ZerobusError> {
     info!("Creating Zerobus SDK with endpoint: {}", endpoint);
-    
-    let sdk = ZerobusSdk::new(endpoint, unity_catalog_url)
-        .map_err(|e| {
-            ZerobusError::ConfigurationError(format!(
-                "Failed to initialize Zerobus SDK: {}",
-                e
-            ))
-        })?;
+
+    let sdk = ZerobusSdk::new(endpoint, unity_catalog_url).map_err(|e| {
+        ZerobusError::ConfigurationError(format!("Failed to initialize Zerobus SDK: {}", e))
+    })?;
 
     debug!("Zerobus SDK created successfully");
     Ok(sdk)
@@ -84,7 +82,9 @@ pub async fn ensure_stream(
             ))
         })?;
 
-    debug!("Zerobus stream created successfully for table: {}", table_name);
+    debug!(
+        "Zerobus stream created successfully for table: {}",
+        table_name
+    );
     Ok(stream)
 }
-

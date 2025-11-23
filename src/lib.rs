@@ -37,13 +37,12 @@
 pub mod config;
 pub mod error;
 pub mod observability;
-pub mod wrapper;
 pub mod utils;
+pub mod wrapper;
 
 #[cfg(feature = "python")]
 pub mod python;
 
-pub use error::ZerobusError;
 pub use config::{OtlpConfig, WrapperConfiguration};
+pub use error::ZerobusError;
 pub use wrapper::{TransmissionResult, ZerobusWrapper};
-

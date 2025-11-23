@@ -3,26 +3,24 @@
 //! This example demonstrates how to use the wrapper from Rust to send
 //! Arrow RecordBatch data to Zerobus.
 
-use arrow_zerobus_sdk_wrapper::{ZerobusWrapper, WrapperConfiguration, ZerobusError};
-use arrow::array::{Int64Array, StringArray, Float64Array};
+use arrow::array::{Float64Array, Int64Array, StringArray};
+use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use arrow::datatypes::{Schema, Field, DataType};
-use std::sync::Arc;
+use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, ZerobusError, ZerobusWrapper};
 use std::env;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get configuration from environment variables
     let endpoint = env::var("ZEROBUS_ENDPOINT")
         .unwrap_or_else(|_| "https://your-workspace.cloud.databricks.com".to_string());
-    let table_name = env::var("ZEROBUS_TABLE_NAME")
-        .unwrap_or_else(|_| "my_table".to_string());
-    let client_id = env::var("ZEROBUS_CLIENT_ID")
-        .unwrap_or_else(|_| "your_client_id".to_string());
-    let client_secret = env::var("ZEROBUS_CLIENT_SECRET")
-        .unwrap_or_else(|_| "your_client_secret".to_string());
-    let unity_catalog_url = env::var("UNITY_CATALOG_URL")
-        .unwrap_or_else(|_| "https://unity-catalog-url".to_string());
+    let table_name = env::var("ZEROBUS_TABLE_NAME").unwrap_or_else(|_| "my_table".to_string());
+    let client_id = env::var("ZEROBUS_CLIENT_ID").unwrap_or_else(|_| "your_client_id".to_string());
+    let client_secret =
+        env::var("ZEROBUS_CLIENT_SECRET").unwrap_or_else(|_| "your_client_secret".to_string());
+    let unity_catalog_url =
+        env::var("UNITY_CATALOG_URL").unwrap_or_else(|_| "https://unity-catalog-url".to_string());
 
     // Create configuration
     println!("Initializing ZerobusWrapper...");
@@ -64,8 +62,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
-    println!("✅ Created RecordBatch with {} rows and {} columns", 
-             batch.num_rows(), batch.num_columns());
+    println!(
+        "✅ Created RecordBatch with {} rows and {} columns",
+        batch.num_rows(),
+        batch.num_columns()
+    );
 
     // Send batch to Zerobus
     println!("\nSending batch to Zerobus...");
@@ -102,4 +103,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-

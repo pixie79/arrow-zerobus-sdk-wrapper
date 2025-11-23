@@ -10,10 +10,10 @@ mod python_tests {
     fn test_error_conversion() {
         Python::with_gil(|py| {
             use arrow_zerobus_sdk_wrapper::ZerobusError;
-            
+
             let config_error = ZerobusError::ConfigurationError("test".to_string());
             let py_err = rust_error_to_python_error(config_error);
-            
+
             assert!(py_err.is_instance_of::<PyConfigurationError>(py).unwrap());
         });
     }
@@ -37,7 +37,7 @@ mod python_tests {
                 100,
                 30000,
             );
-            
+
             assert!(config.is_ok());
         });
     }
@@ -46,7 +46,7 @@ mod python_tests {
     fn test_py_transmission_result() {
         use arrow_zerobus_sdk_wrapper::wrapper::TransmissionResult;
         use arrow_zerobus_sdk_wrapper::ZerobusError;
-        
+
         let result = TransmissionResult {
             success: true,
             error: None,
@@ -54,13 +54,12 @@ mod python_tests {
             latency_ms: Some(100),
             batch_size_bytes: 1024,
         };
-        
+
         let py_result = PyTransmissionResult { inner: result };
-        
+
         assert!(py_result.success());
         assert_eq!(py_result.attempts(), 1);
         assert_eq!(py_result.latency_ms(), Some(100));
         assert_eq!(py_result.batch_size_bytes(), 1024);
     }
 }
-

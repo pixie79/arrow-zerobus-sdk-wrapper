@@ -3,12 +3,12 @@
 //! These tests verify that the Rust API matches the contract specification
 //! defined in specs/001-zerobus-wrapper/contracts/rust-api.md
 
-use arrow_zerobus_sdk_wrapper::{
-    WrapperConfiguration, ZerobusWrapper, ZerobusError, TransmissionResult, OtlpConfig,
-};
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
+use arrow_zerobus_sdk_wrapper::{
+    OtlpConfig, TransmissionResult, WrapperConfiguration, ZerobusError, ZerobusWrapper,
+};
 use std::sync::Arc;
 
 /// Test that WrapperConfiguration can be created with required fields
@@ -154,7 +154,7 @@ async fn test_wrapper_lifecycle_contract() {
 
     // Contract: flush() and shutdown() should be callable
     let wrapper_result = ZerobusWrapper::new(config).await;
-    
+
     if let Ok(wrapper) = wrapper_result {
         // Contract: flush() should return Result<(), ZerobusError>
         let flush_result: Result<(), ZerobusError> = wrapper.flush().await;
@@ -215,4 +215,3 @@ fn test_retry_config_contract() {
     assert_eq!(config.retry_base_delay_ms, 200);
     assert_eq!(config.retry_max_delay_ms, 60000);
 }
-

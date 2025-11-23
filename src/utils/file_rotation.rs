@@ -35,15 +35,14 @@ pub fn rotate_file_if_needed(
 
     // Generate new file path with timestamp
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-    let parent = file_path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let parent = file_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
     let stem = file_path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("file");
-    let extension = file_path
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
+    let extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
     let new_path = parent.join(format!("{}_{}.{}", stem, timestamp, extension));
 
@@ -56,4 +55,3 @@ pub fn rotate_file_if_needed(
 
     Ok(Some(new_path))
 }
-

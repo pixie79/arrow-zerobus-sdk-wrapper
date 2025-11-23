@@ -13,7 +13,7 @@ mod python_contract_tests {
         Python::with_gil(|py| {
             let module = PyModule::import(py, "arrow_zerobus_sdk_wrapper")
                 .expect("Module should be importable");
-            
+
             // Verify ZerobusWrapper class exists
             assert!(module.getattr("ZerobusWrapper").is_ok());
         });
@@ -24,7 +24,7 @@ mod python_contract_tests {
         Python::with_gil(|py| {
             let module = PyModule::import(py, "arrow_zerobus_sdk_wrapper")
                 .expect("Module should be importable");
-            
+
             // Verify TransmissionResult class exists
             assert!(module.getattr("TransmissionResult").is_ok());
         });
@@ -35,7 +35,7 @@ mod python_contract_tests {
         Python::with_gil(|py| {
             let module = PyModule::import(py, "arrow_zerobus_sdk_wrapper")
                 .expect("Module should be importable");
-            
+
             // Verify all error classes exist per contract
             assert!(module.getattr("ZerobusError").is_ok());
             assert!(module.getattr("ConfigurationError").is_ok());
@@ -68,7 +68,7 @@ mod python_contract_tests {
                 100,
                 30000,
             );
-            
+
             assert!(config.is_ok());
         });
     }
@@ -76,7 +76,7 @@ mod python_contract_tests {
     #[test]
     fn test_python_transmission_result_contract() {
         use arrow_zerobus_sdk_wrapper::wrapper::TransmissionResult;
-        
+
         // Contract: TransmissionResult must have these fields accessible
         let result = TransmissionResult {
             success: true,
@@ -85,9 +85,9 @@ mod python_contract_tests {
             latency_ms: Some(100),
             batch_size_bytes: 1024,
         };
-        
+
         let py_result = PyTransmissionResult { inner: result };
-        
+
         // Contract: All fields should be accessible via getters
         assert!(py_result.success());
         assert_eq!(py_result.attempts(), 1);
@@ -96,4 +96,3 @@ mod python_contract_tests {
         assert!(py_result.error().is_none());
     }
 }
-

@@ -1,10 +1,13 @@
 //! Integration tests for Arrow to Protobuf conversion
 
-use arrow_zerobus_sdk_wrapper::wrapper::conversion;
-use arrow::array::{Int64Array, StringArray, Float64Array, BooleanArray};
+use arrow::array::{BooleanArray, Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use prost_types::{DescriptorProto, FieldDescriptorProto, field_descriptor_proto::{Label, Type}};
+use arrow_zerobus_sdk_wrapper::wrapper::conversion;
+use prost_types::{
+    field_descriptor_proto::{Label, Type},
+    DescriptorProto, FieldDescriptorProto,
+};
 use std::sync::Arc;
 
 fn create_test_batch() -> RecordBatch {
@@ -114,7 +117,11 @@ fn test_record_batch_to_protobuf_bytes() {
 
     // Each row should have some bytes (not empty)
     for (idx, bytes) in bytes_list.iter().enumerate() {
-        assert!(!bytes.is_empty(), "Row {} should have non-empty Protobuf bytes", idx);
+        assert!(
+            !bytes.is_empty(),
+            "Row {} should have non-empty Protobuf bytes",
+            idx
+        );
     }
 }
 
@@ -122,11 +129,7 @@ fn test_record_batch_to_protobuf_bytes() {
 fn test_record_batch_to_protobuf_bytes_empty_batch() {
     let schema = Schema::new(vec![Field::new("id", DataType::Int64, false)]);
     let id_array = Int64Array::from(Vec::<i64>::new());
-    let batch = RecordBatch::try_new(
-        Arc::new(schema),
-        vec![Arc::new(id_array)],
-    )
-    .unwrap();
+    let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(id_array)]).unwrap();
 
     let descriptor = DescriptorProto {
         name: Some("TestMessage".to_string()),
@@ -231,9 +234,7 @@ fn test_record_batch_to_protobuf_bytes_with_nulls() {
 
 #[test]
 fn test_generate_descriptor_boolean() {
-    let schema = Schema::new(vec![
-        Field::new("active", DataType::Boolean, false),
-    ]);
+    let schema = Schema::new(vec![Field::new("active", DataType::Boolean, false)]);
 
     let descriptor = conversion::generate_protobuf_descriptor(&schema).unwrap();
     assert_eq!(descriptor.field.len(), 1);
@@ -253,4 +254,3 @@ fn test_generate_descriptor_float_types() {
     assert_eq!(descriptor.field[0].r#type, Some(Type::Float as i32));
     assert_eq!(descriptor.field[1].r#type, Some(Type::Double as i32));
 }
-

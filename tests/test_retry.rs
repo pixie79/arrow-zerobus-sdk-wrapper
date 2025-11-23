@@ -22,13 +22,14 @@ async fn test_retry_exhausted_after_max_attempts() {
     let result = config
         .execute_with_retry(|| {
             attempts += 1;
-            async {
-                Err::<String, _>(ZerobusError::ConnectionError("test error".to_string()))
-            }
+            async { Err::<String, _>(ZerobusError::ConnectionError("test error".to_string())) }
         })
         .await;
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), ZerobusError::RetryExhausted(_)));
+    assert!(matches!(
+        result.unwrap_err(),
+        ZerobusError::RetryExhausted(_)
+    ));
     assert_eq!(attempts, 3);
 }
 
@@ -40,12 +41,17 @@ async fn test_retry_non_retryable_error() {
         .execute_with_retry(|| {
             attempts += 1;
             async {
-                Err::<String, _>(ZerobusError::ConfigurationError("non-retryable".to_string()))
+                Err::<String, _>(ZerobusError::ConfigurationError(
+                    "non-retryable".to_string(),
+                ))
             }
         })
         .await;
     assert!(result.is_err());
-    assert!(matches!(result.unwrap_err(), ZerobusError::ConfigurationError(_)));
+    assert!(matches!(
+        result.unwrap_err(),
+        ZerobusError::ConfigurationError(_)
+    ));
     assert_eq!(attempts, 1); // Should not retry non-retryable errors
 }
 
@@ -62,7 +68,7 @@ async fn test_retry_succeeds_after_failures() {
                 *count += 1;
                 let current = *count;
                 drop(count);
-                
+
                 if current < 3 {
                     Err::<String, _>(ZerobusError::ConnectionError("transient".to_string()))
                 } else {
@@ -75,4 +81,3 @@ async fn test_retry_succeeds_after_failures() {
     assert_eq!(result.unwrap(), "success");
     assert_eq!(*attempts.lock().unwrap(), 3);
 }
-

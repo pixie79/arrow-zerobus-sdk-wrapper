@@ -1,10 +1,10 @@
 //! Integration tests for configuration
 
-use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
-use arrow_zerobus_sdk_wrapper::config::OtlpConfig;
 use arrow_zerobus_sdk_wrapper::config::loader;
-use std::path::PathBuf;
+use arrow_zerobus_sdk_wrapper::config::OtlpConfig;
+use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
 use std::fs;
+use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[test]
@@ -46,10 +46,8 @@ fn test_config_validate_success() {
 
 #[test]
 fn test_config_validate_invalid_endpoint() {
-    let config = WrapperConfiguration::new(
-        "invalid-endpoint".to_string(),
-        "test_table".to_string(),
-    );
+    let config =
+        WrapperConfiguration::new("invalid-endpoint".to_string(), "test_table".to_string());
 
     assert!(config.validate().is_err());
 }
@@ -74,4 +72,3 @@ client_secret: test_client_secret
     assert_eq!(config.zerobus_endpoint, "https://test.cloud.databricks.com");
     assert_eq!(config.table_name, "test_table");
 }
-

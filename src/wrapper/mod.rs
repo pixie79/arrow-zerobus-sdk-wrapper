@@ -109,9 +109,7 @@ impl ZerobusWrapper {
             .client_secret
             .as_ref()
             .ok_or_else(|| {
-                ZerobusError::ConfigurationError(
-                    "client_secret is required for SDK".to_string(),
-                )
+                ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
             })?
             .clone();
 
@@ -163,7 +161,7 @@ impl ZerobusWrapper {
             if let Some(output_dir) = &config.debug_output_dir {
                 use crate::wrapper::debug::DebugWriter;
                 use std::time::Duration;
-                
+
                 match DebugWriter::new(
                     output_dir.clone(),
                     Duration::from_secs(config.debug_flush_interval_secs),
@@ -215,7 +213,11 @@ impl ZerobusWrapper {
         let start_time = std::time::Instant::now();
         let batch_size_bytes = batch.get_array_memory_size();
 
-        debug!("Sending batch with {} rows, {} bytes", batch.num_rows(), batch_size_bytes);
+        debug!(
+            "Sending batch with {} rows, {} bytes",
+            batch.num_rows(),
+            batch_size_bytes
+        );
 
         // Write Arrow batch to debug file if enabled
         if let Some(ref debug_writer) = self.debug_writer {
@@ -238,9 +240,7 @@ impl ZerobusWrapper {
             .execute_with_retry(|| {
                 let batch = batch.clone();
                 let wrapper = self.clone();
-                async move {
-                    wrapper.send_batch_internal(batch).await
-                }
+                async move { wrapper.send_batch_internal(batch).await }
             })
             .await;
 
@@ -249,7 +249,8 @@ impl ZerobusWrapper {
         // Record metrics if observability is enabled
         if let Some(obs) = &self.observability {
             let success = result.is_ok();
-            obs.record_batch_sent(batch_size_bytes, success, latency_ms).await;
+            obs.record_batch_sent(batch_size_bytes, success, latency_ms)
+                .await;
         }
 
         match result {
@@ -298,7 +299,7 @@ impl ZerobusWrapper {
                 *sdk_guard = Some(sdk);
             }
         }
-        
+
         // Get SDK reference (lock is released, so we can lock again for stream creation)
         let sdk_guard = self.sdk.lock().await;
         let sdk = sdk_guard.as_ref().unwrap();
@@ -306,25 +307,24 @@ impl ZerobusWrapper {
         // 2. Generate Protobuf descriptor from Arrow schema
         // TODO: For now, we'll need a simple descriptor generator
         // In full implementation, this should reuse logic from cap-gl-consumer-rust
-        let descriptor = crate::wrapper::conversion::generate_protobuf_descriptor(batch.schema().as_ref())
-            .map_err(|e| {
-                ZerobusError::ConversionError(format!(
-                    "Failed to generate Protobuf descriptor: {}",
-                    e
-                ))
-            })?;
+        let descriptor =
+            crate::wrapper::conversion::generate_protobuf_descriptor(batch.schema().as_ref())
+                .map_err(|e| {
+                    ZerobusError::ConversionError(format!(
+                        "Failed to generate Protobuf descriptor: {}",
+                        e
+                    ))
+                })?;
 
         // 3. Convert Arrow RecordBatch to Protobuf bytes (one per row)
-        let protobuf_bytes_list = crate::wrapper::conversion::record_batch_to_protobuf_bytes(
-            &batch,
-            &descriptor,
-        )
-        .map_err(|e| {
-            ZerobusError::ConversionError(format!(
-                "Failed to convert RecordBatch to Protobuf: {}",
-                e
-            ))
-        })?;
+        let protobuf_bytes_list =
+            crate::wrapper::conversion::record_batch_to_protobuf_bytes(&batch, &descriptor)
+                .map_err(|e| {
+                    ZerobusError::ConversionError(format!(
+                        "Failed to convert RecordBatch to Protobuf: {}",
+                        e
+                    ))
+                })?;
 
         // Write Protobuf bytes to debug file if enabled
         if let Some(ref debug_writer) = self.debug_writer {
@@ -341,9 +341,7 @@ impl ZerobusWrapper {
             .config
             .client_id
             .as_ref()
-            .ok_or_else(|| {
-                ZerobusError::ConfigurationError("client_id is required".to_string())
-            })?
+            .ok_or_else(|| ZerobusError::ConfigurationError("client_id is required".to_string()))?
             .clone();
         let client_secret = self
             .config
@@ -396,13 +394,17 @@ impl ZerobusWrapper {
                 Err(e) => {
                     // Check if it's an authentication error (token expired)
                     let error_msg = format!("{}", e);
-                    if error_msg.contains("authentication") || error_msg.contains("token") || error_msg.contains("401") || error_msg.contains("403") {
+                    if error_msg.contains("authentication")
+                        || error_msg.contains("token")
+                        || error_msg.contains("401")
+                        || error_msg.contains("403")
+                    {
                         // Try to refresh token and retry once
                         let auth_error = ZerobusError::AuthenticationError(format!(
                             "Authentication failed: {}",
                             e
                         ));
-                        
+
                         // Attempt token refresh
                         if let (Some(uc_url), Some(cid), Some(cs)) = (
                             self.config.unity_catalog_url.as_ref(),
@@ -423,7 +425,7 @@ impl ZerobusWrapper {
                                 }
                             }
                         }
-                        
+
                         return Err(auth_error);
                     }
                     return Err(ZerobusError::TransmissionError(format!(
@@ -434,7 +436,10 @@ impl ZerobusWrapper {
             }
         }
 
-        debug!("Successfully sent {} rows to Zerobus", protobuf_bytes_list.len());
+        debug!(
+            "Successfully sent {} rows to Zerobus",
+            protobuf_bytes_list.len()
+        );
         Ok(())
     }
 
@@ -450,12 +455,12 @@ impl ZerobusWrapper {
                 warn!("Failed to flush debug files: {}", e);
             }
         }
-        
+
         // Flush observability if enabled
         if let Some(ref obs) = self.observability {
             obs.flush().await?;
         }
-        
+
         Ok(())
     }
 
@@ -495,4 +500,3 @@ impl Clone for ZerobusWrapper {
 // Ensure Send + Sync for thread-safety
 unsafe impl Send for ZerobusWrapper {}
 unsafe impl Sync for ZerobusWrapper {}
-

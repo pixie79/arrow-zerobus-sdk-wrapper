@@ -5,4 +5,3 @@
 pub mod otlp;
 
 pub use otlp::ObservabilityManager;
-

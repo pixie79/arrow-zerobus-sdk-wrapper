@@ -9,7 +9,7 @@ use prost_types::FileDescriptorProto;
 async fn test_create_sdk() {
     // This test requires actual Zerobus endpoint and Unity Catalog URL
     // It's marked as ignored and should be run manually with real credentials
-    
+
     let result = zerobus::create_sdk(
         "https://test.cloud.databricks.com".to_string(),
         "https://test.cloud.databricks.com".to_string(),
@@ -24,7 +24,7 @@ async fn test_create_sdk() {
 fn test_file_descriptor_proto_creation() {
     // Test that we can create a FileDescriptorProto from a DescriptorProto
     use prost_types::DescriptorProto;
-    
+
     let descriptor = DescriptorProto {
         name: Some("TestMessage".to_string()),
         field: vec![],
@@ -53,9 +53,9 @@ fn test_file_descriptor_proto_creation() {
 fn test_ensure_stream_signature() {
     // Test that ensure_stream function exists and has correct signature
     // This is a compile-time test to ensure the API matches expectations
-    
+
     use prost_types::FileDescriptorProto;
-    
+
     // Verify function exists by checking it compiles
     // The function signature is:
     // pub async fn ensure_stream(
@@ -65,10 +65,10 @@ fn test_ensure_stream_signature() {
     //     client_id: String,
     //     client_secret: String,
     // ) -> Result<ZerobusStream, ZerobusError>
-    
+
     // Create test data to verify types compile
     let _descriptor = FileDescriptorProto::default();
-    
+
     // If this compiles, the function exists and types are correct
     assert!(true);
 }
@@ -77,8 +77,7 @@ fn test_ensure_stream_signature() {
 fn test_error_handling_for_sdk_errors() {
     // Test that SDK errors are properly converted to ZerobusError
     let error = ZerobusError::ConnectionError("SDK initialization failed".to_string());
-    
+
     assert!(error.is_retryable());
     assert!(!error.is_token_expired());
 }
-

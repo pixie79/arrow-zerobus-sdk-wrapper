@@ -8,7 +8,10 @@ use crate::wrapper::protobuf_serialization::{encode_tag, encode_varint};
 use arrow::array::*;
 use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
-use prost_types::{DescriptorProto, FieldDescriptorProto, field_descriptor_proto::Label, field_descriptor_proto::Type};
+use prost_types::{
+    field_descriptor_proto::Label, field_descriptor_proto::Type, DescriptorProto,
+    FieldDescriptorProto,
+};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -44,7 +47,7 @@ pub fn record_batch_to_protobuf_bytes(
 ) -> Result<Vec<Vec<u8>>, ZerobusError> {
     let schema = batch.schema();
     let num_rows = batch.num_rows();
-    
+
     if num_rows == 0 {
         return Ok(vec![]);
     }
@@ -139,13 +142,7 @@ fn encode_arrow_field_to_protobuf(
             // Encode each element in the list
             for i in start..end {
                 if !values.is_null(i) {
-                    encode_arrow_value_to_protobuf(
-                        buffer,
-                        field_number,
-                        field_desc,
-                        values,
-                        i,
-                    )?;
+                    encode_arrow_value_to_protobuf(buffer, field_number, field_desc, values, i)?;
                 }
             }
             return Ok(());
@@ -175,58 +172,85 @@ fn encode_arrow_value_to_protobuf(
     let protobuf_type = field_desc.r#type.unwrap_or(9);
 
     match protobuf_type {
-        1 => { // Double (Float64)
-            let arr = array.as_any().downcast_ref::<Float64Array>()
-                .ok_or_else(|| ZerobusError::ConversionError("Expected Float64Array".to_string()))?;
+        1 => {
+            // Double (Float64)
+            let arr = array
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .ok_or_else(|| {
+                    ZerobusError::ConversionError("Expected Float64Array".to_string())
+                })?;
             let wire_type = 1u32; // Fixed64
             encode_tag(buffer, field_number, wire_type)?;
             buffer.extend_from_slice(&arr.value(row_idx).to_le_bytes());
             Ok(())
         }
-        2 => { // Float (Float32)
-            let arr = array.as_any().downcast_ref::<Float32Array>()
-                .ok_or_else(|| ZerobusError::ConversionError("Expected Float32Array".to_string()))?;
+        2 => {
+            // Float (Float32)
+            let arr = array
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| {
+                    ZerobusError::ConversionError("Expected Float32Array".to_string())
+                })?;
             let wire_type = 5u32; // Fixed32
             encode_tag(buffer, field_number, wire_type)?;
             buffer.extend_from_slice(&arr.value(row_idx).to_le_bytes());
             Ok(())
         }
-        3 => { // Int64
+        3 => {
+            // Int64
             if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, arr.value(row_idx) as u64)?;
                 Ok(())
             } else {
-                Err(ZerobusError::ConversionError("Expected Int64Array for Int64 field".to_string()))
+                Err(ZerobusError::ConversionError(
+                    "Expected Int64Array for Int64 field".to_string(),
+                ))
             }
         }
-        4 => { // UInt64
-            let arr = array.as_any().downcast_ref::<UInt64Array>()
+        4 => {
+            // UInt64
+            let arr = array
+                .as_any()
+                .downcast_ref::<UInt64Array>()
                 .ok_or_else(|| ZerobusError::ConversionError("Expected UInt64Array".to_string()))?;
             let wire_type = 0u32; // Varint
             encode_tag(buffer, field_number, wire_type)?;
             encode_varint(buffer, arr.value(row_idx))?;
             Ok(())
         }
-        5 => { // Int32
-            let arr = array.as_any().downcast_ref::<Int32Array>()
+        5 => {
+            // Int32
+            let arr = array
+                .as_any()
+                .downcast_ref::<Int32Array>()
                 .ok_or_else(|| ZerobusError::ConversionError("Expected Int32Array".to_string()))?;
             let wire_type = 0u32; // Varint
             encode_tag(buffer, field_number, wire_type)?;
             encode_varint(buffer, arr.value(row_idx) as u64)?;
             Ok(())
         }
-        8 => { // Bool
-            let arr = array.as_any().downcast_ref::<BooleanArray>()
-                .ok_or_else(|| ZerobusError::ConversionError("Expected BooleanArray".to_string()))?;
+        8 => {
+            // Bool
+            let arr = array
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .ok_or_else(|| {
+                    ZerobusError::ConversionError("Expected BooleanArray".to_string())
+                })?;
             let wire_type = 0u32; // Varint
             encode_tag(buffer, field_number, wire_type)?;
             encode_varint(buffer, if arr.value(row_idx) { 1 } else { 0 })?;
             Ok(())
         }
-        9 => { // String
-            let arr = array.as_any().downcast_ref::<StringArray>()
+        9 => {
+            // String
+            let arr = array
+                .as_any()
+                .downcast_ref::<StringArray>()
                 .ok_or_else(|| ZerobusError::ConversionError("Expected StringArray".to_string()))?;
             let wire_type = 2u32; // Length-delimited
             encode_tag(buffer, field_number, wire_type)?;
@@ -235,8 +259,11 @@ fn encode_arrow_value_to_protobuf(
             buffer.extend_from_slice(bytes);
             Ok(())
         }
-        12 => { // Bytes
-            let arr = array.as_any().downcast_ref::<BinaryArray>()
+        12 => {
+            // Bytes
+            let arr = array
+                .as_any()
+                .downcast_ref::<BinaryArray>()
                 .ok_or_else(|| ZerobusError::ConversionError("Expected BinaryArray".to_string()))?;
             let wire_type = 2u32; // Length-delimited
             encode_tag(buffer, field_number, wire_type)?;
@@ -245,12 +272,10 @@ fn encode_arrow_value_to_protobuf(
             buffer.extend_from_slice(bytes);
             Ok(())
         }
-        _ => {
-            Err(ZerobusError::ConversionError(format!(
-                "Unsupported Protobuf type: {}",
-                protobuf_type
-            )))
-        }
+        _ => Err(ZerobusError::ConversionError(format!(
+            "Unsupported Protobuf type: {}",
+            protobuf_type
+        ))),
     }
 }
 

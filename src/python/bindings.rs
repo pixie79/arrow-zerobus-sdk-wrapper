@@ -21,17 +21,20 @@ pub fn register_module(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyZerobusWrapper>()?;
     m.add_class::<PyTransmissionResult>()?;
     m.add_class::<PyWrapperConfiguration>()?;
-    
+
     // Register exception classes
     m.add("ZerobusError", py.get_type::<PyZerobusError>())?;
     m.add("ConfigurationError", py.get_type::<PyConfigurationError>())?;
-    m.add("AuthenticationError", py.get_type::<PyAuthenticationError>())?;
+    m.add(
+        "AuthenticationError",
+        py.get_type::<PyAuthenticationError>(),
+    )?;
     m.add("ConnectionError", py.get_type::<PyConnectionError>())?;
     m.add("ConversionError", py.get_type::<PyConversionError>())?;
     m.add("TransmissionError", py.get_type::<PyTransmissionError>())?;
     m.add("RetryExhausted", py.get_type::<PyRetryExhausted>())?;
     m.add("TokenRefreshError", py.get_type::<PyTokenRefreshError>())?;
-    
+
     Ok(())
 }
 
@@ -171,9 +174,10 @@ impl PyWrapperConfiguration {
             let otlp_config = if let Some(config_obj) = observability_config {
                 Python::with_gil(|py| {
                     let dict = config_obj.extract::<&PyDict>(py)?;
-                    let endpoint = dict.get_item("endpoint")?
+                    let endpoint = dict
+                        .get_item("endpoint")?
                         .and_then(|v| v.extract::<String>().ok());
-                    
+
                     // Extract any additional configuration from the dict
                     let mut extra = std::collections::HashMap::new();
                     for (key, value) in dict.iter() {
@@ -181,17 +185,16 @@ impl PyWrapperConfiguration {
                         if key_str != "endpoint" {
                             // Try to extract as JSON-serializable value
                             if let Ok(json_str) = value.extract::<String>() {
-                                if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                                if let Ok(json_val) =
+                                    serde_json::from_str::<serde_json::Value>(&json_str)
+                                {
                                     extra.insert(key_str, json_val);
                                 }
                             }
                         }
                     }
-                    
-                    Ok::<OtlpConfig, PyErr>(OtlpConfig {
-                        endpoint,
-                        extra,
-                    })
+
+                    Ok::<OtlpConfig, PyErr>(OtlpConfig { endpoint, extra })
                 })?
             } else {
                 OtlpConfig::default()
@@ -207,14 +210,14 @@ impl PyWrapperConfiguration {
             }
         }
 
-        config = config.with_retry_config(retry_max_attempts, retry_base_delay_ms, retry_max_delay_ms);
+        config =
+            config.with_retry_config(retry_max_attempts, retry_base_delay_ms, retry_max_delay_ms);
 
         Ok(Self { inner: config })
     }
 
     fn validate(&self) -> PyResult<()> {
-        self.inner.validate()
-            .map_err(rust_error_to_python_error)?;
+        self.inner.validate().map_err(rust_error_to_python_error)?;
         Ok(())
     }
 }
@@ -307,9 +310,9 @@ impl PyZerobusWrapper {
         let rust_batch = pyarrow_to_rust_batch(py, batch)?;
 
         // Execute async operation on Tokio runtime
-        let result = self.runtime.block_on(async {
-            self.inner.send_batch(rust_batch).await
-        });
+        let result = self
+            .runtime
+            .block_on(async { self.inner.send_batch(rust_batch).await });
 
         match result {
             Ok(transmission_result) => Ok(PyTransmissionResult {
@@ -375,10 +378,10 @@ impl Clone for PyZerobusWrapper {
 fn pyarrow_to_rust_batch(py: Python, batch: PyObject) -> PyResult<RecordBatch> {
     // Import PyArrow module
     let pyarrow = PyModule::import(py, "pyarrow")?;
-    
+
     // Get RecordBatch class
     let record_batch_class = pyarrow.getattr("RecordBatch")?;
-    
+
     // Check if the object is a RecordBatch
     let batch_ref = batch.as_ref(py);
     if !batch_ref.is_instance(record_batch_class)? {
@@ -406,27 +409,27 @@ fn pyarrow_to_rust_batch(py: Python, batch: PyObject) -> PyResult<RecordBatch> {
 fn pyarrow_to_rust_batch_c_interface(py: Python, batch_ref: &PyAny) -> PyResult<RecordBatch> {
     use arrow::ipc::reader::StreamReader;
     use std::io::Cursor;
-    
+
     // Use PyArrow's IPC serialization for efficient conversion
     // This avoids copying individual array elements by using Arrow's
     // binary format as an intermediate representation
-    
+
     // Serialize RecordBatch to IPC format using PyArrow
     let serialized = batch_ref.call_method0("to_pybytes")?;
     let bytes: Vec<u8> = serialized.extract()?;
-    
+
     // Deserialize in Rust using Arrow IPC reader
     // This is efficient because Arrow IPC format matches Rust Arrow format
     let cursor = Cursor::new(bytes);
     let mut reader = StreamReader::try_new(cursor, None)
         .map_err(|e| PyException::new_err(format!("Failed to create IPC reader: {}", e)))?;
-    
+
     // Read the RecordBatch from the IPC stream
     let batch = reader
         .next()
         .ok_or_else(|| PyException::new_err("No RecordBatch in IPC stream"))?
         .map_err(|e| PyException::new_err(format!("Failed to read RecordBatch: {}", e)))?;
-    
+
     Ok(batch)
 }
 
@@ -440,7 +443,7 @@ fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<R
     let schema_obj = batch_ref.getattr("schema")?;
     let schema_fields = schema_obj.getattr("fields")?;
     let num_fields = schema_fields.len()?;
-    
+
     let mut rust_fields = Vec::new();
     let mut rust_arrays = Vec::new();
 
@@ -450,14 +453,14 @@ fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<R
         let field_name = field_obj.getattr("name")?.extract::<String>()?;
         let field_type_obj = field_obj.getattr("type")?;
         let field_type_str = format!("{}", field_type_obj);
-        
+
         // Map PyArrow type to Rust Arrow type
         let rust_type = pyarrow_type_to_rust_type(&field_type_str)?;
         rust_fields.push(Field::new(field_name.clone(), rust_type.clone(), true));
 
         // Get array from batch
         let array_obj = batch_ref.call_method1("column", (i,))?;
-        
+
         // Convert PyArrow array to Rust array
         let rust_array = pyarrow_array_to_rust_array(py, &array_obj, &rust_type)?;
         rust_arrays.push(rust_array);
@@ -566,4 +569,3 @@ fn pyarrow_array_to_rust_array(
         ))),
     }
 }
-

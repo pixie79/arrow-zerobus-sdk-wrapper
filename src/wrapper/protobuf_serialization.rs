@@ -14,7 +14,11 @@ use crate::error::ZerobusError;
 /// * `buffer` - Buffer to write tag to
 /// * `field_number` - Protobuf field number
 /// * `wire_type` - Protobuf wire type (0=Varint, 1=Fixed64, 2=Length-delimited, 5=Fixed32)
-pub(crate) fn encode_tag(buffer: &mut Vec<u8>, field_number: i32, wire_type: u32) -> Result<(), ZerobusError> {
+pub(crate) fn encode_tag(
+    buffer: &mut Vec<u8>,
+    field_number: i32,
+    wire_type: u32,
+) -> Result<(), ZerobusError> {
     let tag = ((field_number as u32) << 3) | wire_type;
     encode_varint(buffer, tag as u64)
 }
@@ -36,4 +40,3 @@ pub(crate) fn encode_varint(buffer: &mut Vec<u8>, mut value: u64) -> Result<(), 
     buffer.push((value & 0x7F) as u8);
     Ok(())
 }
-

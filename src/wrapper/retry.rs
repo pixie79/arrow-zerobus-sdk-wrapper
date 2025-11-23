@@ -4,9 +4,9 @@
 //! for handling transient failures.
 
 use crate::error::ZerobusError;
+use rand::Rng;
 use std::time::Duration;
 use tokio::time::sleep;
-use rand::Rng;
 
 /// Retry configuration
 #[derive(Debug, Clone)]
@@ -57,10 +57,7 @@ impl RetryConfig {
     ///
     /// Returns the result of the function if successful, or `RetryExhausted` error
     /// if all retry attempts are exhausted.
-    pub async fn execute_with_retry<F, Fut, T>(
-        &self,
-        mut f: F,
-    ) -> Result<T, ZerobusError>
+    pub async fn execute_with_retry<F, Fut, T>(&self, mut f: F) -> Result<T, ZerobusError>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T, ZerobusError>>,
@@ -113,7 +110,7 @@ impl RetryConfig {
     fn calculate_delay(&self, attempt: u32) -> Duration {
         // Calculate exponential backoff: base_delay * 2^attempt
         let exponential_delay_ms = self.base_delay_ms.saturating_mul(1 << attempt.min(20));
-        
+
         // Cap at max_delay_ms
         let capped_delay_ms = exponential_delay_ms.min(self.max_delay_ms);
 
@@ -150,14 +147,14 @@ mod tests {
         let result = config
             .execute_with_retry(|| {
                 attempts += 1;
-                async {
-                    Err::<String, _>(ZerobusError::ConnectionError("test error".to_string()))
-                }
+                async { Err::<String, _>(ZerobusError::ConnectionError("test error".to_string())) }
             })
             .await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ZerobusError::RetryExhausted(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ZerobusError::RetryExhausted(_)
+        ));
         assert_eq!(attempts, 3);
     }
 }
-
