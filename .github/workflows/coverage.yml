@@ -32,33 +32,29 @@ jobs:
           echo "External dependencies not available - creating stub to allow cargo metadata to succeed"
           # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
           mkdir -p ../zerobus-sdk-rs/sdk
-          cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'STUB_EOF'
-[package]
-name = "databricks-zerobus-ingest-sdk"
-version = "0.1.0"
-edition = "2021"
-STUB_EOF
+          echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+          echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+          echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+          echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
           # Create a minimal lib.rs
           mkdir -p ../zerobus-sdk-rs/sdk/src
-          cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'STUB_EOF'
-// Stub for CI - actual SDK not available
-pub struct ZerobusSdk;
-pub struct ZerobusStream;
-pub struct StreamConfigurationOptions;
-pub struct TableProperties;
-
-impl ZerobusSdk {
-    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {
-        Err("SDK not available in CI".to_string())
-    }
-}
-
-impl Default for StreamConfigurationOptions {
-    fn default() -> Self {
-        Self
-    }
-}
-STUB_EOF
+          echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'pub struct TableProperties;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
         fi
     
     - name: Run tests with coverage
