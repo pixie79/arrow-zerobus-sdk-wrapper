@@ -21,7 +21,7 @@ Create a cross-platform Rust SDK wrapper for the Databricks Zerobus Rust SDK tha
 - `pyo3` (v0.20) - Python bindings with auto-initialize and extension-module features
 - `tokio` (v1.35) - Async runtime with full features
 - `opentelemetry` / `opentelemetry_sdk` (v0.31) - OpenTelemetry integration
-- `otlp-rust-service` (local path) - OpenTelemetry functionality via library integration
+- `otlp-arrow-library` (git: https://github.com/pixie79/otlp-rust-service, branch: main) - OpenTelemetry functionality via library integration (includes ResourceMetrics fixes)
 - `serde` / `serde_json` / `serde_yaml` - Serialization and configuration
 - `anyhow` / `thiserror` - Error handling
 - `tracing` / `tracing-subscriber` - Logging
@@ -32,9 +32,11 @@ Create a cross-platform Rust SDK wrapper for the Databricks Zerobus Rust SDK tha
 
 **Testing**: 
 - Rust: `cargo test` with native testing framework
-- Python: `pytest` for Python bindings
+- Python: `pytest` for Python bindings (Python 3.11+)
 - Coverage: `cargo-tarpaulin` for Rust (≥90% per file requirement)
 - Performance: `criterion` for Rust benchmarks
+- CI: GitHub Actions with cross-platform testing (Linux, macOS, Windows)
+  - macOS builds explicitly use Python 3.11
 
 **Target Platform**: Cross-platform (Linux, macOS, Windows)
 

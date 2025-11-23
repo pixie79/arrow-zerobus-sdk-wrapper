@@ -75,9 +75,9 @@
 - Uses Arrow IPC format for efficient data transfer
 - Provides Python bindings that can be reused
 
-**Decision**: Integrate otlp-rust-service as a library dependency, using its OtlpLibrary API for metrics and trace collection. Configure it to export to standard OpenTelemetry backends.
+**Decision**: Integrate otlp-arrow-library (from https://github.com/pixie79/otlp-rust-service, main branch) as a git dependency, using its OtlpLibrary API for metrics and trace collection. Configure it to export to standard OpenTelemetry backends. The main branch includes fixes for ResourceMetrics issues.
 
-**Rationale**: Reusing otlp-rust-service provides proven OpenTelemetry integration, reduces code duplication, and ensures consistency with other projects using the same library.
+**Rationale**: Reusing otlp-rust-service provides proven OpenTelemetry integration, reduces code duplication, and ensures consistency with other projects using the same library. Using the main branch ensures we have the latest fixes, including ResourceMetrics handling improvements.
 
 **Alternatives Considered**:
 - Direct OpenTelemetry SDK usage - Rejected: More code, less reuse
