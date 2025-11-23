@@ -32,15 +32,15 @@ jobs:
           echo "External dependencies not available - creating stub to allow cargo metadata to succeed"
           # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
           mkdir -p ../zerobus-sdk-rs/sdk
-          cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'EOF'
+          cat > ../zerobus-sdk-rs/sdk/Cargo.toml << 'STUB_EOF'
 [package]
 name = "databricks-zerobus-ingest-sdk"
 version = "0.1.0"
 edition = "2021"
-EOF
+STUB_EOF
           # Create a minimal lib.rs
           mkdir -p ../zerobus-sdk-rs/sdk/src
-          cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'EOF'
+          cat > ../zerobus-sdk-rs/sdk/src/lib.rs << 'STUB_EOF'
 // Stub for CI - actual SDK not available
 pub struct ZerobusSdk;
 pub struct ZerobusStream;
@@ -58,7 +58,7 @@ impl Default for StreamConfigurationOptions {
         Self
     }
 }
-EOF
+STUB_EOF
         fi
     
     - name: Run tests with coverage
