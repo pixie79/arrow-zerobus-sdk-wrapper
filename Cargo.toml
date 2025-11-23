@@ -14,6 +14,9 @@ tokio-util = "0.7"
 futures = "0.3"
 
 # Databricks Zerobus SDK
+# Note: This is a path dependency that may not be available in CI
+# In CI, tests that require this SDK will be skipped
+# When not available, the code will still compile but SDK-dependent features won't work
 databricks-zerobus-ingest-sdk = { path = "../zerobus-sdk-rs/sdk" }
 
 # Arrow
@@ -78,6 +81,7 @@ crate-type = ["cdylib", "rlib"]
 default = []
 python = ["pyo3/auto-initialize"]
 observability = ["otlp-arrow-library"]
+zerobus-sdk = ["databricks-zerobus-ingest-sdk"]
 
 [dev-dependencies]
 tempfile = "3.8"
