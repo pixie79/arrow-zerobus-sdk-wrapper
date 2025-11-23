@@ -1,0 +1,50 @@
+name: Test Coverage
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  coverage:
+    name: Generate Coverage Report
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        components: llvm-tools-preview
+        override: true
+    
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+    
+    - name: Run tests with coverage
+      run: |
+        cargo tarpaulin --features python --out Xml --output-dir coverage/
+        cargo tarpaulin --features python --out Html --output-dir coverage/
+        cargo tarpaulin --features python --out Lcov --output-dir coverage/
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        files: ./coverage/cobertura.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Check coverage threshold
+      run: |
+        # Extract coverage percentage from tarpaulin output
+        COVERAGE=$(cargo tarpaulin --features python --out Xml | grep -oP 'line-rate="\K[0-9.]+' | head -1)
+        THRESHOLD=90.0
+        if (( $(echo "$COVERAGE < $THRESHOLD" | bc -l) )); then
+          echo "Coverage $COVERAGE% is below threshold $THRESHOLD%"
+          exit 1
+        fi
+        echo "Coverage $COVERAGE% meets threshold $THRESHOLD%"
+

@@ -1,0 +1,20 @@
+# Clippy configuration for arrow-zerobus-sdk-wrapper
+
+# Allow some common patterns
+allow = [
+    "too_many_arguments",  # Sometimes necessary for configuration structs
+    "module_name_repetitions",  # Common in Rust modules
+]
+
+# Deny warnings that should be errors
+deny = [
+    "unsafe_code",  # No unsafe code unless explicitly justified
+]
+
+# Set pedantic level for strict code quality
+warn = [
+    "pedantic",
+    "nursery",
+    "cargo",
+]
+

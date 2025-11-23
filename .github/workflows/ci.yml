@@ -1,0 +1,104 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      
+      - name: Cache Cargo
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Check formatting
+        run: cargo fmt --check
+      
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      
+      - name: Run tests
+        run: cargo test --all-features
+      
+      - name: Generate coverage report
+        uses: cargo-tarpaulin/cargo-tarpaulin@v0.27
+        with:
+          args: '--out Xml --output-dir coverage --timeout 120'
+          fail-under: 90
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: true
+
+  python:
+    name: Python Bindings Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Build Python bindings
+        run: |
+          pip install maturin
+          maturin build --release
+      
+      - name: Install Python package
+        run: pip install target/wheels/*.whl
+      
+      - name: Run Python tests
+        run: pytest tests/python/
+
+  benchmarks:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      
+      - name: Run benchmarks
+        run: cargo bench
+

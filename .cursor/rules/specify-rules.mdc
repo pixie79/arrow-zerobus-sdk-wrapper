@@ -1,0 +1,29 @@
+# arrow-zerobus-sdk-wrapper Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-11-23
+
+## Active Technologies
+
+- Rust 1.75+ (edition 2021), Python 3.8+ for bindings (001-zerobus-wrapper)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] pytest [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] ruff check .
+
+## Code Style
+
+Rust 1.75+ (edition 2021), Python 3.8+ for bindings: Follow standard conventions
+
+## Recent Changes
+
+- 001-zerobus-wrapper: Added Rust 1.75+ (edition 2021), Python 3.8+ for bindings
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

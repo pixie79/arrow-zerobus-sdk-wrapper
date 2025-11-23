@@ -49,8 +49,9 @@ description: "Task list template for feature implementation"
 **Purpose**: Project initialization and basic structure
 
 - [ ] T001 Create project structure per implementation plan
-- [ ] T002 Initialize [language] project with [framework] dependencies
-- [ ] T003 [P] Configure linting and formatting tools
+- [ ] T002 Initialize Rust project with PyO3 bindings and dependencies
+- [ ] T003 [P] Configure linting and formatting tools (rustfmt, clippy)
+- [ ] T004 [P] Setup test coverage tooling (cargo-tarpaulin) with 90% threshold enforcement
 
 ---
 
@@ -79,21 +80,25 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 1 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 1 (MANDATORY - Constitution requires ≥90% coverage) ⚠️
 
-> **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
+> **NOTE: Write these tests FIRST, ensure they FAIL before implementation. Constitution requires ≥90% test coverage per file.**
 
-- [ ] T010 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T011 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].py
+- [ ] T010 [P] [US1] Unit tests for [module] in tests/unit/test_[name].rs (target ≥90% coverage)
+- [ ] T011 [P] [US1] Contract test for [endpoint] in tests/contract/test_[name].rs
+- [ ] T012 [P] [US1] Integration test for [user journey] in tests/integration/test_[name].rs
+- [ ] T013 [P] [US1] Python binding tests in tests/python/test_[name].py (verify Rust/Python parity)
 
 ### Implementation for User Story 1
 
-- [ ] T012 [P] [US1] Create [Entity1] model in src/models/[entity1].py
-- [ ] T013 [P] [US1] Create [Entity2] model in src/models/[entity2].py
-- [ ] T014 [US1] Implement [Service] in src/services/[service].py (depends on T012, T013)
-- [ ] T015 [US1] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T016 [US1] Add validation and error handling
-- [ ] T017 [US1] Add logging for user story 1 operations
+- [ ] T014 [P] [US1] Create [Entity1] model in src/[entity1].rs
+- [ ] T015 [P] [US1] Create [Entity2] model in src/[entity2].rs
+- [ ] T016 [US1] Implement [Service] in src/[service].rs (depends on T014, T015)
+- [ ] T017 [US1] Implement [endpoint/feature] in src/[location]/[file].rs
+- [ ] T018 [US1] Add Python bindings in src/python/[module].rs (PyO3)
+- [ ] T019 [US1] Add validation and error handling (Rust-native + Python-friendly)
+- [ ] T020 [US1] Add logging for user story 1 operations
+- [ ] T021 [US1] Verify test coverage ≥90% for all new files (cargo-tarpaulin)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
@@ -105,17 +110,23 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 2 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 2 (MANDATORY - Constitution requires ≥90% coverage) ⚠️
 
-- [ ] T018 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T019 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].py
+> **NOTE: Write these tests FIRST, ensure they FAIL before implementation. Constitution requires ≥90% test coverage per file.**
+
+- [ ] T022 [P] [US2] Unit tests for [module] in tests/unit/test_[name].rs (target ≥90% coverage)
+- [ ] T023 [P] [US2] Contract test for [endpoint] in tests/contract/test_[name].rs
+- [ ] T024 [P] [US2] Integration test for [user journey] in tests/integration/test_[name].rs
+- [ ] T025 [P] [US2] Python binding tests in tests/python/test_[name].py
 
 ### Implementation for User Story 2
 
-- [ ] T020 [P] [US2] Create [Entity] model in src/models/[entity].py
-- [ ] T021 [US2] Implement [Service] in src/services/[service].py
-- [ ] T022 [US2] Implement [endpoint/feature] in src/[location]/[file].py
-- [ ] T023 [US2] Integrate with User Story 1 components (if needed)
+- [ ] T026 [P] [US2] Create [Entity] model in src/[entity].rs
+- [ ] T027 [US2] Implement [Service] in src/[service].rs
+- [ ] T028 [US2] Implement [endpoint/feature] in src/[location]/[file].rs
+- [ ] T029 [US2] Add Python bindings in src/python/[module].rs (PyO3)
+- [ ] T030 [US2] Integrate with User Story 1 components (if needed)
+- [ ] T031 [US2] Verify test coverage ≥90% for all new files (cargo-tarpaulin)
 
 **Checkpoint**: At this point, User Stories 1 AND 2 should both work independently
 
@@ -127,16 +138,22 @@ Examples of foundational tasks (adjust based on your project):
 
 **Independent Test**: [How to verify this story works on its own]
 
-### Tests for User Story 3 (OPTIONAL - only if tests requested) ⚠️
+### Tests for User Story 3 (MANDATORY - Constitution requires ≥90% coverage) ⚠️
 
-- [ ] T024 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].py
-- [ ] T025 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].py
+> **NOTE: Write these tests FIRST, ensure they FAIL before implementation. Constitution requires ≥90% test coverage per file.**
+
+- [ ] T032 [P] [US3] Unit tests for [module] in tests/unit/test_[name].rs (target ≥90% coverage)
+- [ ] T033 [P] [US3] Contract test for [endpoint] in tests/contract/test_[name].rs
+- [ ] T034 [P] [US3] Integration test for [user journey] in tests/integration/test_[name].rs
+- [ ] T035 [P] [US3] Python binding tests in tests/python/test_[name].py
 
 ### Implementation for User Story 3
 
-- [ ] T026 [P] [US3] Create [Entity] model in src/models/[entity].py
-- [ ] T027 [US3] Implement [Service] in src/services/[service].py
-- [ ] T028 [US3] Implement [endpoint/feature] in src/[location]/[file].py
+- [ ] T036 [P] [US3] Create [Entity] model in src/[entity].rs
+- [ ] T037 [US3] Implement [Service] in src/[service].rs
+- [ ] T038 [US3] Implement [endpoint/feature] in src/[location]/[file].rs
+- [ ] T039 [US3] Add Python bindings in src/python/[module].rs (PyO3)
+- [ ] T040 [US3] Verify test coverage ≥90% for all new files (cargo-tarpaulin)
 
 **Checkpoint**: All user stories should now be independently functional
 
@@ -150,12 +167,14 @@ Examples of foundational tasks (adjust based on your project):
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] TXXX [P] Documentation updates in docs/
-- [ ] TXXX Code cleanup and refactoring
-- [ ] TXXX Performance optimization across all stories
-- [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
+- [ ] TXXX [P] Documentation updates in docs/ (rustdoc + Python docs)
+- [ ] TXXX Code cleanup and refactoring (maintain ≥90% coverage)
+- [ ] TXXX Performance optimization across all stories (benchmark validation)
+- [ ] TXXX [P] Verify ≥90% test coverage for all files (cargo-tarpaulin report)
+- [ ] TXXX [P] Python binding documentation and examples
 - [ ] TXXX Security hardening
-- [ ] TXXX Run quickstart.md validation
+- [ ] TXXX Run quickstart.md validation (both Rust and Python)
+- [ ] TXXX Performance benchmarking (criterion for Rust, pytest-benchmark for Python)
 
 ---
 

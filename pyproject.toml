@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "arrow-zerobus-sdk-wrapper"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+    "pyarrow>=10.0",
+]
+
+[project.metadata]
+description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
+version = "0.1.0"
+readme = "README.md"
+license = { text = "MIT OR Apache-2.0" }
+authors = [
+    { name = "Arrow Zerobus SDK Wrapper Team" }
+]
+
+[tool.maturin]
+features = ["python"]
+module-name = "arrow_zerobus_sdk_wrapper"
+bindings = "pyo3"
+compatibility = "linux"
+
