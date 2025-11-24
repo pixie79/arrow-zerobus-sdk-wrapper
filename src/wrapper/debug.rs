@@ -17,6 +17,7 @@ use tracing::debug;
 /// Handles writing Arrow RecordBatch and Protobuf files to disk for debugging.
 pub struct DebugWriter {
     /// Output directory for debug files
+    #[allow(dead_code)]
     output_dir: PathBuf,
     /// Arrow IPC file writer
     arrow_writer: Arc<tokio::sync::Mutex<Option<arrow::ipc::writer::FileWriter<std::fs::File>>>>,

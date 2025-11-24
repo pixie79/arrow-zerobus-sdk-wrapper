@@ -86,6 +86,7 @@ pub struct PyTokenRefreshError;
 
 // Register exception classes
 impl PyZerobusError {
+    #[allow(dead_code)]
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyZerobusError, _>(msg)
     }
@@ -141,6 +142,7 @@ pub struct PyWrapperConfiguration {
 }
 
 #[pymethods]
+#[allow(clippy::too_many_arguments, clippy::non_local_definitions)]
 impl PyWrapperConfiguration {
     #[new]
     #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
@@ -268,6 +270,7 @@ pub struct PyZerobusWrapper {
 }
 
 #[pymethods]
+#[allow(clippy::non_local_definitions)]
 impl PyZerobusWrapper {
     #[new]
     fn new(config: PyWrapperConfiguration) -> PyResult<Self> {
@@ -392,13 +395,13 @@ fn pyarrow_to_rust_batch(py: Python, batch: PyObject) -> PyResult<RecordBatch> {
 
     // Try to use PyArrow's C data interface for zero-copy conversion
     // This is the most efficient method
-    if let Ok(c_batch) = pyarrow_to_rust_batch_c_interface(py, &batch_ref) {
+    if let Ok(c_batch) = pyarrow_to_rust_batch_c_interface(py, batch_ref) {
         return Ok(c_batch);
     }
 
     // Fallback: Use PyArrow's Python API to extract data
     // This is less efficient but works for all PyArrow versions
-    pyarrow_to_rust_batch_python_api(py, &batch_ref)
+    pyarrow_to_rust_batch_python_api(py, batch_ref)
 }
 
 /// Convert PyArrow RecordBatch using C data interface (zero-copy when possible)
@@ -462,7 +465,7 @@ fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<R
         let array_obj = batch_ref.call_method1("column", (i,))?;
 
         // Convert PyArrow array to Rust array
-        let rust_array = pyarrow_array_to_rust_array(py, &array_obj, &rust_type)?;
+        let rust_array = pyarrow_array_to_rust_array(py, array_obj, &rust_type)?;
         rust_arrays.push(rust_array);
     }
 

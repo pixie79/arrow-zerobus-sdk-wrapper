@@ -7,22 +7,13 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// OpenTelemetry configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OtlpConfig {
     /// OTLP endpoint URL (optional, uses default if not provided)
     pub endpoint: Option<String>,
     /// Additional OTLP configuration options
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
-}
-
-impl Default for OtlpConfig {
-    fn default() -> Self {
-        Self {
-            endpoint: None,
-            extra: std::collections::HashMap::new(),
-        }
-    }
 }
 
 /// Complete configuration for initializing the wrapper

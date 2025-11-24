@@ -228,11 +228,10 @@ impl ZerobusWrapper {
         }
 
         // Start observability span if enabled
-        let _span = if let Some(obs) = &self.observability {
-            Some(obs.start_send_batch_span(&self.config.table_name))
-        } else {
-            None
-        };
+        let _span = self
+            .observability
+            .as_ref()
+            .map(|obs| obs.start_send_batch_span(&self.config.table_name));
 
         // Use retry logic for transmission
         let result = self

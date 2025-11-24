@@ -35,9 +35,7 @@ impl ObservabilityManager {
     /// Returns `Some(ObservabilityManager)` if observability is enabled and
     /// initialization succeeds, or `None` if disabled or initialization fails.
     pub fn new(config: Option<OtlpConfig>) -> Option<Self> {
-        if config.is_none() {
-            return None;
-        }
+        config.as_ref()?;
 
         #[cfg(feature = "observability")]
         {
