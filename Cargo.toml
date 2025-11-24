@@ -1,6 +1,6 @@
 [package]
 name = "arrow-zerobus-sdk-wrapper"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Arrow Zerobus SDK Wrapper Team"]
 description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
@@ -14,10 +14,9 @@ tokio-util = "0.7"
 futures = "0.3"
 
 # Databricks Zerobus SDK
-# Note: This is a path dependency that may not be available in CI
-# In CI, tests that require this SDK will be skipped
-# When not available, the code will still compile but SDK-dependent features won't work
-databricks-zerobus-ingest-sdk = { path = "../zerobus-sdk-rs/sdk" }
+# Using release version v0.1.1 from GitHub
+# Repository: https://github.com/databricks/zerobus-sdk-rs
+databricks-zerobus-ingest-sdk = { git = "https://github.com/databricks/zerobus-sdk-rs.git", tag = "v0.1.1", package = "databricks-zerobus-ingest-sdk" }
 
 # Arrow
 arrow = "57"

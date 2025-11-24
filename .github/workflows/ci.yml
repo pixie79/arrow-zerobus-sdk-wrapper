@@ -166,7 +166,7 @@ jobs:
           cargo test --features observability --test '*' || true
       
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+        run: cargo install cargo-tarpaulin --locked --force
       
       - name: Generate coverage report
         shell: bash

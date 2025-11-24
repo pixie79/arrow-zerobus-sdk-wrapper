@@ -20,7 +20,7 @@ jobs:
         components: llvm-tools-preview
     
     - name: Install cargo-tarpaulin
-      run: cargo install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin --locked --force
     
     - name: Check if external dependencies exist
       id: check_deps

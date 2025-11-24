@@ -1,12 +1,12 @@
 <!--
 Sync Impact Report:
-Version change: N/A → 1.0.0
-Modified principles: N/A (initial creation)
-Added sections: Code Quality Standards, Testing Standards, User Experience Consistency, Performance Requirements, Multi-Language Support
+Version change: 1.0.0 → 1.1.0
+Modified principles: N/A
+Added sections: Commit Workflow Standards (new principle)
 Templates requiring updates:
-  ✅ plan-template.md - Updated to reference Rust + Python bindings
-  ✅ tasks-template.md - Updated to include testing coverage requirements
-  ✅ spec-template.md - No changes required (already technology-agnostic)
+  ✅ plan-template.md - No changes required (commit workflow applies to all features)
+  ✅ tasks-template.md - No changes required (commit workflow is cross-cutting)
+  ✅ spec-template.md - No changes required (commit workflow applies to all features)
 Follow-up TODOs: None
 -->
 
@@ -63,6 +63,18 @@ lifetime management. Python bindings MUST maintain feature parity with the Rust
 API. Both interfaces MUST share the same underlying implementation to ensure
 consistency. Build system MUST support both Rust and Python packaging workflows.
 
+### VI. Commit Workflow Standards (NON-NEGOTIABLE)
+
+Before creating any commit, the following checks MUST be completed and passing:
+CHANGELOG.md MUST be current and reflect all changes being committed. All
+documentation MUST be updated to reflect code changes. `cargo fmt` MUST be run
+to ensure code formatting compliance. `cargo clippy` MUST pass with no
+warnings or errors. All tests MUST pass (`cargo test`). These checks MUST be
+verified locally before the commit is created. All commits MUST be GPG signed.
+Unsigned commits or commits that bypass these checks are not acceptable and will
+be rejected during code review. This workflow ensures code quality, consistency,
+and traceability of changes.
+
 ## Technology Stack & Constraints
 
 **Primary Language**: Rust (latest stable version)
@@ -96,9 +108,11 @@ consistency. Build system MUST support both Rust and Python packaging workflows.
 1. Test coverage ≥90% per file (measured by line coverage)
 2. All tests passing (unit, integration, contract, performance)
 3. No performance regressions
-4. Linting and formatting compliance
+4. Linting and formatting compliance (`cargo clippy`, `cargo fmt`)
 5. Documentation complete for public APIs
 6. Both Rust and Python bindings functional
+7. CHANGELOG.md updated for all changes
+8. All commits GPG signed
 
 **Testing Workflow**:
 1. Write tests first (TDD)
@@ -130,4 +144,4 @@ Exceptions to principles require explicit approval and documentation.
 - Manual review: code quality, API design, documentation
 - Both automated and manual checks must pass before merge
 
-**Version**: 1.0.0 | **Ratified**: 2025-11-23 | **Last Amended**: 2025-11-23
+**Version**: 1.1.0 | **Ratified**: 2025-11-23 | **Last Amended**: 2025-11-25
