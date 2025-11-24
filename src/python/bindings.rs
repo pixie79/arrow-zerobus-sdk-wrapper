@@ -142,7 +142,7 @@ pub struct PyWrapperConfiguration {
 }
 
 #[pymethods]
-#[allow(clippy::too_many_arguments, clippy::non_local_definitions)]
+#[allow(clippy::too_many_arguments, non_local_definitions)]
 impl PyWrapperConfiguration {
     #[new]
     #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
@@ -270,7 +270,7 @@ pub struct PyZerobusWrapper {
 }
 
 #[pymethods]
-#[allow(clippy::non_local_definitions)]
+#[allow(non_local_definitions)]
 impl PyZerobusWrapper {
     #[new]
     fn new(config: PyWrapperConfiguration) -> PyResult<Self> {
