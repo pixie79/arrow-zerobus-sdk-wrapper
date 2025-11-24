@@ -135,21 +135,32 @@ pip install target/wheels/*.whl
 
 ### Rust
 
-**Note**: When running tests with the `python` feature enabled, you may need to set the `PYO3_PYTHON` environment variable to point to your Python executable:
+**Note**: When running tests with the `python` feature enabled, PyO3 needs to link against the Python library. You can either:
+
+1. **Use the helper script** (recommended):
+   ```bash
+   ./scripts/test.sh --all-features
+   ```
+
+2. **Set PYO3_PYTHON manually**:
+   ```bash
+   # Find your Python executable
+   which python3.11 || which python3
+   
+   # Run tests with Python feature
+   PYO3_PYTHON=/path/to/python3 cargo test --all-features
+   ```
+
+The helper script automatically detects and uses Python 3.11+ from your PATH.
+
+### Rust Tests
 
 ```bash
-# Find your Python executable
-which python3.11 || which python3
-
-# Run tests with Python feature
-PYO3_PYTHON=/path/to/python3 cargo test --all-features
-```
-
-This is required because PyO3 needs to link against the Python library when building Python bindings. Tests
-
-```bash
-# Run all tests
+# Run all tests (without Python feature)
 cargo test
+
+# Run all tests including Python bindings
+./scripts/test.sh --all-features
 
 # Run with coverage (requires cargo-tarpaulin)
 cargo tarpaulin --out Xml --output-dir coverage
