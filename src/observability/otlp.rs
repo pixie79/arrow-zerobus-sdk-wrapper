@@ -5,8 +5,9 @@
 
 use crate::config::OtlpConfig;
 use crate::error::ZerobusError;
+
+#[cfg(feature = "observability")]
 use std::sync::Arc;
-use tracing::warn;
 
 #[cfg(feature = "observability")]
 use otlp_arrow_library::{Config as OtlpLibraryConfig, OtlpLibrary};
@@ -54,14 +55,14 @@ impl ObservabilityManager {
     ///
     /// This method properly initializes the OtlpLibrary asynchronously.
     pub async fn new_async(config: Option<OtlpConfig>) -> Option<Self> {
-        let config = match config {
+        let _config = match config {
             Some(c) => c,
             None => return None,
         };
 
         #[cfg(feature = "observability")]
         {
-            let library_config = Self::convert_config(config);
+            let library_config = Self::convert_config(_config);
 
             match OtlpLibrary::new(library_config).await {
                 Ok(library) => Some(Self {

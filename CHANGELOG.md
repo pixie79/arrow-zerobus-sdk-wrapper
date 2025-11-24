@@ -102,6 +102,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2025-11-25
+
+### Changed
+- **chore**: Updated `databricks-zerobus-ingest-sdk` dependency to use official release v0.1.1 from GitHub instead of local path dependency
+- **chore**: Updated `otlp-arrow-library` dependency to explicitly reference main branch from GitHub
+- **chore**: Updated code to be compatible with zerobus-sdk-rs v0.1.1 API changes
+
+### Fixed
+- **fix**: Updated `TableProperties` usage to match v0.1.1 API (removed `file_descriptor_set`, `descriptor_proto` is now required)
+- **fix**: Updated `ensure_stream` function to accept `DescriptorProto` directly instead of `FileDescriptorProto`
+- **fix**: Fixed unused import warnings in observability module
+
+### Dependencies
+- **deps**: `databricks-zerobus-ingest-sdk` v0.1.1 (from `https://github.com/databricks/zerobus-sdk-rs.git` tag `v0.1.1`)
+- **deps**: `otlp-arrow-library` main branch (from `https://github.com/pixie79/otlp-rust-service.git`)
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -115,5 +133,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.1.1]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.0
 

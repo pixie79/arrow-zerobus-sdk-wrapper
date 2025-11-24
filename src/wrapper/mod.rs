@@ -351,21 +351,12 @@ impl ZerobusWrapper {
             })?
             .clone();
 
-        // Create FileDescriptorProto from DescriptorProto
-        use prost_types::FileDescriptorProto;
-        let file_descriptor_proto = FileDescriptorProto {
-            name: Some(format!("table_{}", self.config.table_name)),
-            package: Some(self.config.table_name.clone()),
-            message_type: vec![descriptor],
-            ..Default::default()
-        };
-
         let mut stream_guard = self.stream.lock().await;
         if stream_guard.is_none() {
             let _stream = crate::wrapper::zerobus::ensure_stream(
                 sdk,
                 self.config.table_name.clone(),
-                file_descriptor_proto,
+                descriptor.clone(),
                 client_id.clone(),
                 client_secret.clone(),
             )

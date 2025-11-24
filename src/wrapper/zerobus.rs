@@ -7,7 +7,7 @@ use crate::error::ZerobusError;
 use databricks_zerobus_ingest_sdk::{
     StreamConfigurationOptions, TableProperties, ZerobusSdk, ZerobusStream,
 };
-use prost_types::FileDescriptorProto;
+use prost_types::DescriptorProto;
 use tracing::{debug, info};
 
 /// Create or get Zerobus SDK instance
@@ -42,7 +42,7 @@ pub async fn create_sdk(
 ///
 /// * `sdk` - Zerobus SDK instance
 /// * `table_name` - Target table name
-/// * `file_descriptor_proto` - Protobuf file descriptor for schema
+/// * `descriptor_proto` - Protobuf descriptor for schema
 /// * `client_id` - OAuth2 client ID
 /// * `client_secret` - OAuth2 client secret
 ///
@@ -52,22 +52,15 @@ pub async fn create_sdk(
 pub async fn ensure_stream(
     sdk: &ZerobusSdk,
     table_name: String,
-    file_descriptor_proto: FileDescriptorProto,
+    descriptor_proto: DescriptorProto,
     client_id: String,
     client_secret: String,
 ) -> Result<ZerobusStream, ZerobusError> {
     info!("Creating Zerobus stream for table: {}", table_name);
 
-    // Create FileDescriptorSet from FileDescriptorProto
-    use prost_types::FileDescriptorSet;
-    let file_descriptor_set = FileDescriptorSet {
-        file: vec![file_descriptor_proto],
-    };
-
     let table_properties = TableProperties {
         table_name: table_name.clone(),
-        descriptor_proto: None,
-        file_descriptor_set: Some(file_descriptor_set),
+        descriptor_proto,
     };
 
     #[allow(clippy::default_constructed_unit_structs)]
