@@ -13,7 +13,7 @@ mod python_tests {
             let config_error = ZerobusError::ConfigurationError("test".to_string());
             let py_err = rust_error_to_python_error(config_error);
 
-            assert!(py_err.is_instance_of::<PyConfigurationError>(py).unwrap());
+            assert!(py_err.is_instance_of::<PyConfigurationError>(py));
         });
     }
 
