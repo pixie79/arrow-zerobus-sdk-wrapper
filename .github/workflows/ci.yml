@@ -31,6 +31,7 @@ jobs:
       
       - name: Check if external dependencies exist
         id: check_deps
+        shell: bash
         run: |
           # Check for zerobus SDK
           if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
@@ -82,6 +83,7 @@ jobs:
       - name: Get Cargo.toml hash (macOS)
         if: matrix.os == 'macos-latest'
         id: cargo-hash
+        shell: bash
         run: |
           if [ -f "Cargo.toml" ]; then
             HASH=$(shasum -a 256 Cargo.toml | cut -d' ' -f1 | head -c 16)
