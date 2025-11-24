@@ -231,7 +231,8 @@ impl PyWrapperConfiguration {
 #[pyclass]
 #[derive(Clone)]
 pub struct PyTransmissionResult {
-    inner: TransmissionResult,
+    #[allow(dead_code)] // Used in tests
+    pub(crate) inner: TransmissionResult,
 }
 
 #[pymethods]
