@@ -26,18 +26,15 @@ pub fn register_module(py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyTransmissionResult>()?;
     m.add_class::<PyWrapperConfiguration>()?;
 
-    // Register exception classes
-    m.add("ZerobusError", py.get_type::<PyZerobusError>())?;
-    m.add("ConfigurationError", py.get_type::<PyConfigurationError>())?;
-    m.add(
-        "AuthenticationError",
-        py.get_type::<PyAuthenticationError>(),
-    )?;
-    m.add("ConnectionError", py.get_type::<PyConnectionError>())?;
-    m.add("ConversionError", py.get_type::<PyConversionError>())?;
-    m.add("TransmissionError", py.get_type::<PyTransmissionError>())?;
-    m.add("RetryExhausted", py.get_type::<PyRetryExhausted>())?;
-    m.add("TokenRefreshError", py.get_type::<PyTokenRefreshError>())?;
+    // Register exception classes - base class must be registered first
+    m.add_class::<PyZerobusError>()?;
+    m.add_class::<PyConfigurationError>()?;
+    m.add_class::<PyAuthenticationError>()?;
+    m.add_class::<PyConnectionError>()?;
+    m.add_class::<PyConversionError>()?;
+    m.add_class::<PyTransmissionError>()?;
+    m.add_class::<PyRetryExhausted>()?;
+    m.add_class::<PyTokenRefreshError>()?;
 
     Ok(())
 }
@@ -59,6 +56,13 @@ fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
 #[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyZerobusError;
+
+#[pymethods]
+impl PyZerobusError {
+    // Empty implementation - base class for exception hierarchy
+    // This is required for PyO3 to recognize it as a valid base class
+    // for other exception classes to extend
+}
 
 #[pyclass(extends=PyZerobusError)]
 #[derive(Debug)]
@@ -87,14 +91,6 @@ pub struct PyRetryExhausted;
 #[pyclass(extends=PyZerobusError)]
 #[derive(Debug)]
 pub struct PyTokenRefreshError;
-
-// Register exception classes
-impl PyZerobusError {
-    #[allow(dead_code)]
-    fn new_err(msg: String) -> PyErr {
-        PyErr::new::<PyZerobusError, _>(msg)
-    }
-}
 
 impl PyConfigurationError {
     fn new_err(msg: String) -> PyErr {
