@@ -26,7 +26,7 @@ jobs:
       id: check_deps
       shell: bash
       run: |
-          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
+        if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
           echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
         else
           echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
