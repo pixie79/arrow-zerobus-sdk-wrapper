@@ -105,6 +105,16 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       
+      - name: Normalize line endings (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          # Convert CRLF to LF for all Rust files
+          find . -type f \( -name "*.rs" -o -name "*.toml" \) -exec dos2unix {} + 2>/dev/null || {
+            # If dos2unix is not available, use sed (available on Windows runners)
+            find . -type f \( -name "*.rs" -o -name "*.toml" \) -exec sed -i 's/\r$//' {} +
+          }
+      
       - name: Check formatting
         run: cargo fmt --check
       
