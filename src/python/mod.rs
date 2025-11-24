@@ -5,8 +5,7 @@
 
 pub mod bindings;
 
-// Re-export for tests (tests are in separate crate)
-#[cfg(test)]
+// Re-export for tests (tests are in separate crate, so they can't access pub(crate) functions)
 pub use bindings::rust_error_to_python_error;
 
 use pyo3::prelude::*;
