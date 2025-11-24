@@ -143,6 +143,7 @@ jobs:
       
       - name: Check if external dependencies exist
         id: check_deps
+        shell: bash
         run: |
           if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
             echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
@@ -219,6 +220,7 @@ jobs:
       
       - name: Check if external dependencies exist
         id: check_deps
+        shell: bash
         run: |
           if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
             echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
