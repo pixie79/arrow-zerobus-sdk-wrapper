@@ -58,7 +58,7 @@ pub fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
 // We cannot use a custom base class (PyZerobusError) for other exceptions
 // because PyO3 doesn't support that pattern. Instead, all exceptions extend
 // PyException directly, but they're logically grouped as ZerobusError exceptions.
-#[pyclass(extends=PyException)]
+#[pyclass(name = "ZerobusError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyZerobusError;
 
@@ -67,31 +67,31 @@ impl PyZerobusError {
     // Base exception class for Zerobus errors
 }
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "ConfigurationError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyConfigurationError;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "AuthenticationError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyAuthenticationError;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "ConnectionError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyConnectionError;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "ConversionError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyConversionError;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "TransmissionError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyTransmissionError;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "RetryExhausted", extends=PyException)]
 #[derive(Debug)]
 pub struct PyRetryExhausted;
 
-#[pyclass(extends=PyException)]
+#[pyclass(name = "TokenRefreshError", extends=PyException)]
 #[derive(Debug)]
 pub struct PyTokenRefreshError;
 
@@ -138,7 +138,7 @@ impl PyTokenRefreshError {
 }
 
 /// Python wrapper for WrapperConfiguration
-#[pyclass]
+#[pyclass(name = "WrapperConfiguration")]
 #[derive(Clone)]
 #[allow(non_local_definitions)]
 pub struct PyWrapperConfiguration {
@@ -229,7 +229,7 @@ impl PyWrapperConfiguration {
 }
 
 /// Python wrapper for TransmissionResult
-#[pyclass]
+#[pyclass(name = "TransmissionResult")]
 #[derive(Clone)]
 pub struct PyTransmissionResult {
     // Made pub for tests (which are in a separate crate)
@@ -269,7 +269,7 @@ impl PyTransmissionResult {
 ///
 /// Thread-safe wrapper that handles Arrow RecordBatch to Protobuf conversion,
 /// authentication, retry logic, and transmission to Zerobus.
-#[pyclass]
+#[pyclass(name = "ZerobusWrapper")]
 #[allow(non_local_definitions)]
 pub struct PyZerobusWrapper {
     inner: Arc<ZerobusWrapper>,

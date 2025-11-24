@@ -24,9 +24,9 @@ def test_import_module():
 
 def test_configuration_creation():
     """Test that WrapperConfiguration can be created."""
-    from arrow_zerobus_sdk_wrapper import PyWrapperConfiguration
+    from arrow_zerobus_sdk_wrapper import WrapperConfiguration
     
-    config = PyWrapperConfiguration(
+    config = WrapperConfiguration(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
         client_id="test_client_id",
@@ -39,10 +39,10 @@ def test_configuration_creation():
 
 def test_configuration_validation():
     """Test that configuration validation works."""
-    from arrow_zerobus_sdk_wrapper import PyWrapperConfiguration, PyConfigurationError
+    from arrow_zerobus_sdk_wrapper import WrapperConfiguration, ConfigurationError
     
     # Valid configuration
-    config = PyWrapperConfiguration(
+    config = WrapperConfiguration(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
     )
@@ -54,7 +54,7 @@ def test_configuration_validation():
         pytest.fail(f"Valid configuration should not raise error: {e}")
     
     # Invalid configuration
-    invalid_config = PyWrapperConfiguration(
+    invalid_config = WrapperConfiguration(
         endpoint="invalid-endpoint",
         table_name="test_table",
     )
@@ -66,7 +66,7 @@ def test_configuration_validation():
 
 def test_transmission_result():
     """Test that TransmissionResult can be created and accessed."""
-    from arrow_zerobus_sdk_wrapper import PyTransmissionResult
+    from arrow_zerobus_sdk_wrapper import TransmissionResult
     
     # Note: This is a test of the Python class structure
     # Actual TransmissionResult objects are created by the wrapper
