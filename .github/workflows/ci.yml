@@ -35,23 +35,33 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Install build essentials (Linux)
+      - name: Install build essentials and Python shared library (Linux)
         if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
           sudo apt-get update
-          # Install build tools - Python dev libraries should be provided by actions/setup-python
+          # Install build tools
           sudo apt-get install -y build-essential
+          # Try to install Python shared library - needed for PyO3 linking
+          # The package name might vary, so we try a few options
+          sudo apt-get install -y libpython3.11 libpython3.11-dev || \
+          sudo apt-get install -y libpython3.12 libpython3.12-dev || \
+          sudo apt-get install -y libpython3-dev || \
+          echo "Python shared library package not found, continuing anyway"
       
-      - name: Install maturin and verify Python
+      - name: Install maturin and set up Python for PyO3
         shell: bash
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install maturin
-          # Verify Python is discoverable by PyO3
+          # Set PYO3_PYTHON to help PyO3 find Python for linking
+          PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
+          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
+          echo "Using Python: $PYTHON_EXEC"
           python3 --version
-          python3 -c "import sys; print(f'Python executable: {sys.executable}')"
+          # Verify Python library is available
           python3 -c "import sysconfig; print(f'Python lib dir: {sysconfig.get_config_var(\"LIBDIR\")}')"
+          python3 -c "import sysconfig; print(f'Python shared library: {sysconfig.get_config_var(\"LDLIBRARY\")}')"
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -140,7 +150,22 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       
+      - name: Verify Python library availability
+        shell: bash
+        run: |
+          # Check if Python shared library is available
+          PYTHON_VERSION=$(python3 --version | awk '{print $2}' | cut -d. -f1,2)
+          echo "Python version: $PYTHON_VERSION"
+          # Try to find Python library
+          python3 -c "import sysconfig; print('Python LIBDIR:', sysconfig.get_config_var('LIBDIR'))"
+          python3 -c "import sysconfig; print('Python LDLIBRARY:', sysconfig.get_config_var('LDLIBRARY'))"
+          # Check if libpython exists
+          find /usr -name "libpython${PYTHON_VERSION}*.so*" 2>/dev/null | head -5 || echo "Python shared library not found in /usr"
+      
       - name: Run tests
+        env:
+          # Ensure PYO3_PYTHON is set for PyO3 to find Python
+          PYO3_PYTHON: ${{ env.PYO3_PYTHON || 'python3' }}
         run: cargo test --all-features
       
       - name: Install cargo-tarpaulin
