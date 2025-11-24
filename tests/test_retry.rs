@@ -2,8 +2,6 @@
 
 use arrow_zerobus_sdk_wrapper::wrapper::retry::RetryConfig;
 use arrow_zerobus_sdk_wrapper::ZerobusError;
-use std::time::Duration;
-use tokio::time::Instant;
 
 #[tokio::test]
 async fn test_retry_succeeds_on_first_attempt() {

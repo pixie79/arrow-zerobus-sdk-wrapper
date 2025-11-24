@@ -1,10 +1,8 @@
 //! Integration tests for configuration
 
 use arrow_zerobus_sdk_wrapper::config::loader;
-use arrow_zerobus_sdk_wrapper::config::OtlpConfig;
 use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
 
 #[test]

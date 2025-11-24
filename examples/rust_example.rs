@@ -6,7 +6,7 @@
 use arrow::array::{Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
-use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, ZerobusError, ZerobusWrapper};
+use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, ZerobusWrapper};
 use std::env;
 use std::sync::Arc;
 

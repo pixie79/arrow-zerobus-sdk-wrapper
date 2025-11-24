@@ -1,6 +1,6 @@
 //! Integration tests for Arrow to Protobuf conversion
 
-use arrow::array::{BooleanArray, Float64Array, Int64Array, StringArray};
+use arrow::array::{Float64Array, Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
 use arrow_zerobus_sdk_wrapper::wrapper::conversion;

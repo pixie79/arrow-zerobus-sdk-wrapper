@@ -70,7 +70,8 @@ fn test_ensure_stream_signature() {
     let _descriptor = FileDescriptorProto::default();
 
     // If this compiles, the function exists and types are correct
-    assert!(true);
+    // Placeholder test - actual SDK integration requires real SDK
+    assert!(true, "Placeholder test");
 }
 
 #[test]

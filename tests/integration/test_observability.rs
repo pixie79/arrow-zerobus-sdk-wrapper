@@ -138,7 +138,8 @@ async fn test_observability_disabled() {
     // Should work without observability (may fail without real SDK, but tests the flow)
     if wrapper_result.is_ok() {
         // Wrapper created successfully without observability
-        assert!(true);
+        // Placeholder assertion - actual observability test requires real SDK
+        assert!(true, "Placeholder test");
     }
 }
 
