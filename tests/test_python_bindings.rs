@@ -19,7 +19,7 @@ mod python_tests {
 
     #[test]
     fn test_py_wrapper_configuration_new() {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             let config = PyWrapperConfiguration::new(
                 "https://test.cloud.databricks.com".to_string(),
                 "test_table".to_string(),

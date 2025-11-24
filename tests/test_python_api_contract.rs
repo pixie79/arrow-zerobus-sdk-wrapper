@@ -50,7 +50,7 @@ mod python_contract_tests {
 
     #[test]
     fn test_python_wrapper_configuration_contract() {
-        Python::with_gil(|py| {
+        Python::with_gil(|_py| {
             // Test that PyWrapperConfiguration can be created with required fields
             let config = PyWrapperConfiguration::new(
                 "https://test.cloud.databricks.com".to_string(),
