@@ -4,7 +4,6 @@
 mod python_tests {
     use arrow_zerobus_sdk_wrapper::python::bindings::*;
     use pyo3::prelude::*;
-    use pyo3::types::PyDict;
 
     #[test]
     fn test_error_conversion() {
@@ -45,7 +44,6 @@ mod python_tests {
     #[test]
     fn test_py_transmission_result() {
         use arrow_zerobus_sdk_wrapper::wrapper::TransmissionResult;
-        use arrow_zerobus_sdk_wrapper::ZerobusError;
 
         let result = TransmissionResult {
             success: true,

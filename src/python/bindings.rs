@@ -40,7 +40,8 @@ pub fn register_module(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 /// Convert Rust ZerobusError to Python exception
-fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
+#[cfg(test)]
+pub(crate) fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
     match error {
         ZerobusError::ConfigurationError(msg) => PyConfigurationError::new_err(msg),
         ZerobusError::AuthenticationError(msg) => PyAuthenticationError::new_err(msg),
@@ -149,7 +150,8 @@ pub struct PyWrapperConfiguration {
 impl PyWrapperConfiguration {
     #[new]
     #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
-    fn new(
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn new(
         endpoint: String,
         table_name: String,
         client_id: Option<String>,
@@ -237,27 +239,32 @@ pub struct PyTransmissionResult {
 #[pymethods]
 impl PyTransmissionResult {
     #[getter]
-    fn success(&self) -> bool {
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn success(&self) -> bool {
         self.inner.success
     }
 
     #[getter]
-    fn error(&self) -> Option<String> {
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn error(&self) -> Option<String> {
         self.inner.error.as_ref().map(|e| e.to_string())
     }
 
     #[getter]
-    fn attempts(&self) -> u32 {
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn attempts(&self) -> u32 {
         self.inner.attempts
     }
 
     #[getter]
-    fn latency_ms(&self) -> Option<u64> {
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn latency_ms(&self) -> Option<u64> {
         self.inner.latency_ms
     }
 
     #[getter]
-    fn batch_size_bytes(&self) -> usize {
+    #[cfg_attr(test, allow(dead_code))]
+    pub(crate) fn batch_size_bytes(&self) -> usize {
         self.inner.batch_size_bytes
     }
 }
