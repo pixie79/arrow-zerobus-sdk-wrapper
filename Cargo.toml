@@ -1,0 +1,106 @@
+[package]
+name = "arrow-zerobus-sdk-wrapper"
+version = "0.1.0"
+edition = "2021"
+authors = ["Arrow Zerobus SDK Wrapper Team"]
+description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/pixie79/arrow-zerobus-sdk-wrapper"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full", "time", "signal", "rt-multi-thread"] }
+tokio-util = "0.7"
+futures = "0.3"
+
+# Databricks Zerobus SDK
+# Note: This is a path dependency that may not be available in CI
+# In CI, tests that require this SDK will be skipped
+# When not available, the code will still compile but SDK-dependent features won't work
+databricks-zerobus-ingest-sdk = { path = "../zerobus-sdk-rs/sdk" }
+
+# Arrow
+arrow = "57"
+arrow-array = "57"
+
+# Protobuf (must match SDK versions)
+prost = "0.13"
+prost-types = "0.13"
+
+# gRPC support (must match SDK versions)
+tonic = "0.10"
+tonic-build = "0.10"
+
+# Rustls crypto provider (required for gRPC/TLS)
+rustls = { version = "0.23", features = ["aws_lc_rs"] }
+
+# Python bindings (optional feature)
+pyo3 = { version = "0.20", features = ["extension-module"], optional = true }
+
+# OpenTelemetry
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "metrics", "trace"] }
+opentelemetry-otlp = { version = "0.31", features = ["metrics", "trace", "grpc-tonic"] }
+opentelemetry-proto = "0.31"
+
+# OTLP Arrow Library (git dependency)
+# Optional: Only used when observability is enabled
+# Repository: https://github.com/pixie79/otlp-rust-service
+otlp-arrow-library = { git = "https://github.com/pixie79/otlp-rust-service.git", branch = "main", optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# URL handling
+url = "2.5"
+
+# Random number generation (for jitter)
+rand = "0.8"
+
+# HTTP client for OAuth token refresh
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+
+[lib]
+name = "arrow_zerobus_sdk_wrapper"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+python = ["pyo3/auto-initialize"]
+observability = ["otlp-arrow-library"]
+
+[dev-dependencies]
+tempfile = "3.8"
+wiremock = "0.6"
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio-test = "0.4"
+
+[[bench]]
+name = "latency"
+path = "benches/performance/bench_latency.rs"
+harness = false
+
+[[bench]]
+name = "throughput"
+path = "benches/performance/bench_throughput.rs"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+

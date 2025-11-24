@@ -1,50 +1,133 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report:
+Version change: N/A → 1.0.0
+Modified principles: N/A (initial creation)
+Added sections: Code Quality Standards, Testing Standards, User Experience Consistency, Performance Requirements, Multi-Language Support
+Templates requiring updates:
+  ✅ plan-template.md - Updated to reference Rust + Python bindings
+  ✅ tasks-template.md - Updated to include testing coverage requirements
+  ✅ spec-template.md - No changes required (already technology-agnostic)
+Follow-up TODOs: None
+-->
+
+# Arrow Zerobus SDK Wrapper Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Code Quality Standards (NON-NEGOTIABLE)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+All code MUST adhere to strict quality standards. Code quality is measured by:
+clarity, maintainability, documentation, and adherence to Rust best practices.
+Every module MUST be self-contained, well-documented, and follow idiomatic Rust
+patterns. Code reviews MUST verify: proper error handling, absence of unsafe code
+unless explicitly justified, comprehensive documentation comments, and adherence
+to project linting rules. Complexity MUST be justified; simpler solutions are
+preferred unless performance or correctness requirements demand otherwise.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. Testing Standards (NON-NEGOTIABLE)
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Test coverage MUST exceed 90% per file as measured by line coverage. TDD is
+mandatory: Tests written → User approved → Tests fail → Then implement.
+Red-Green-Refactor cycle strictly enforced. Every public API MUST have unit tests,
+integration tests for cross-module interactions, and contract tests for external
+interfaces. Test failures block merges; coverage below 90% blocks merges.
+Performance tests MUST be included for performance-critical paths. Tests MUST be
+fast, deterministic, and isolated.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. User Experience Consistency
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+The SDK MUST provide a consistent, intuitive API surface across both Rust and
+Python bindings. Function names, parameter ordering, error types, and return
+values MUST be semantically equivalent between language interfaces. Documentation
+MUST be synchronized across both interfaces. Error messages MUST be clear,
+actionable, and consistent. Breaking changes to the public API require
+deprecation periods and migration guides. User-facing APIs MUST follow
+established patterns and conventions for each language ecosystem.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Performance Requirements
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Performance is a first-class requirement. All public APIs MUST meet documented
+performance targets. Performance-critical paths MUST be benchmarked and
+monitored. Memory usage MUST be bounded and predictable. No API call should
+exceed documented latency thresholds without explicit justification. Performance
+regressions block merges unless justified by correctness or security
+improvements. Performance tests MUST be part of the CI/CD pipeline.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Multi-Language Support Architecture
+
+The core implementation MUST be in Rust for performance and safety. Python
+bindings MUST be provided via PyO3 or equivalent, ensuring zero-copy data
+transfer where possible. The Rust API MUST be designed with FFI considerations:
+clear ownership semantics, minimal allocations in hot paths, and explicit
+lifetime management. Python bindings MUST maintain feature parity with the Rust
+API. Both interfaces MUST share the same underlying implementation to ensure
+consistency. Build system MUST support both Rust and Python packaging workflows.
+
+## Technology Stack & Constraints
+
+**Primary Language**: Rust (latest stable version)
+**Python Bindings**: PyO3 or equivalent FFI mechanism
+**Testing Framework**: Rust native testing + pytest for Python bindings
+**Coverage Tooling**: cargo-tarpaulin or equivalent for Rust, coverage.py for Python
+**Performance Benchmarking**: criterion for Rust, pytest-benchmark for Python
+**Documentation**: rustdoc for Rust, Sphinx or mkdocs for Python
+
+**Build Requirements**:
+- Rust toolchain (stable)
+- Python 3.11+ for bindings
+- Cross-compilation support for target platforms
+- CI/CD must test both Rust and Python interfaces
+
+**Performance Constraints**:
+- All public APIs must have documented performance characteristics
+- Memory usage must be bounded per operation
+- Latency targets must be defined and validated
+
+## Development Workflow & Quality Gates
+
+**Code Review Requirements**:
+- All PRs MUST pass constitution compliance checks
+- Coverage reports MUST show ≥90% per file
+- Performance benchmarks MUST not regress
+- Documentation MUST be updated for public API changes
+- Both Rust and Python interfaces MUST be tested
+
+**Quality Gates (Blocking)**:
+1. Test coverage ≥90% per file (measured by line coverage)
+2. All tests passing (unit, integration, contract, performance)
+3. No performance regressions
+4. Linting and formatting compliance
+5. Documentation complete for public APIs
+6. Both Rust and Python bindings functional
+
+**Testing Workflow**:
+1. Write tests first (TDD)
+2. Ensure tests fail (red)
+3. Implement feature (green)
+4. Refactor while maintaining green
+5. Verify coverage ≥90%
+6. Run performance benchmarks
+7. Validate both language interfaces
+
+**Documentation Requirements**:
+- All public APIs MUST have rustdoc comments
+- Python bindings MUST have docstrings
+- Examples MUST be provided for common use cases
+- Performance characteristics MUST be documented
+- Migration guides for breaking changes
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices and coding
+standards. Amendments require: documentation of rationale, approval from project
+maintainers, migration plan for existing code, and version bump. All PRs and
+code reviews MUST verify compliance with these principles. Complexity additions
+must be justified with performance, correctness, or security rationale.
+Exceptions to principles require explicit approval and documentation.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Compliance Verification**:
+- Automated checks: coverage, tests, linting, benchmarks
+- Manual review: code quality, API design, documentation
+- Both automated and manual checks must pass before merge
+
+**Version**: 1.0.0 | **Ratified**: 2025-11-23 | **Last Amended**: 2025-11-23

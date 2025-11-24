@@ -1,0 +1,5 @@
+# Clippy configuration for arrow-zerobus-sdk-wrapper
+#
+# Note: Clippy lint levels (allow, deny, warn) are configured via
+# attributes in code or via cargo clippy command line flags, not in this file.
+# This file only contains configuration options for specific lints.
