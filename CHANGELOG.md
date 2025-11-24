@@ -135,6 +135,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Requires all commits to be GPG signed
   - Updated Quality Gates to enforce commit workflow requirements
 
+### Fixed
+- **fix**: Fixed CI cargo-tarpaulin installation error by adding --force flag to allow overwriting existing installation
+
 ---
 
 [0.1.1]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.1
