@@ -30,11 +30,26 @@ jobs:
           # Re-normalize line endings based on .gitattributes
           git add --renormalize .
       
-      - name: Set up Python (macOS)
-        if: matrix.os == 'macos-latest'
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      
+      - name: Set PYO3_PYTHON environment variable
+        shell: bash
+        run: |
+          # Find Python executable and set PYO3_PYTHON for PyO3
+          if command -v python3.11 &> /dev/null; then
+            PYTHON_EXEC=$(command -v python3.11)
+          elif command -v python3 &> /dev/null; then
+            PYTHON_EXEC=$(command -v python3)
+          else
+            echo "Error: Python 3.11+ not found" >&2
+            exit 1
+          fi
+          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
+          echo "Using Python: $PYTHON_EXEC"
+          $PYTHON_EXEC --version
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -149,6 +164,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      
+      - name: Set PYO3_PYTHON environment variable
+        shell: bash
+        run: |
+          # Find Python executable and set PYO3_PYTHON for PyO3
+          if command -v python3.11 &> /dev/null; then
+            PYTHON_EXEC=$(command -v python3.11)
+          elif command -v python3 &> /dev/null; then
+            PYTHON_EXEC=$(command -v python3)
+          else
+            echo "Error: Python 3.11+ not found" >&2
+            exit 1
+          fi
+          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
+          echo "Using Python: $PYTHON_EXEC"
+          $PYTHON_EXEC --version
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
