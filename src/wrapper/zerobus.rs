@@ -70,7 +70,8 @@ pub async fn ensure_stream(
         file_descriptor_set: Some(file_descriptor_set),
     };
 
-    let options = StreamConfigurationOptions;
+    #[allow(clippy::default_constructed_unit_structs)]
+    let options = StreamConfigurationOptions::default();
 
     let stream = sdk
         .create_stream(table_properties, client_id, client_secret, Some(options))
