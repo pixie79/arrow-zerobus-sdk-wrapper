@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 /// Register all Python classes and functions in the module
-pub fn register_module(py: Python, m: &PyModule) -> PyResult<()> {
+pub fn register_module(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<PyZerobusWrapper>()?;
     m.add_class::<PyTransmissionResult>()?;
     m.add_class::<PyWrapperConfiguration>()?;
@@ -53,42 +53,44 @@ fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
 }
 
 // Exception classes
+// Note: In PyO3, all custom exceptions must extend PyException directly.
+// We cannot use a custom base class (PyZerobusError) for other exceptions
+// because PyO3 doesn't support that pattern. Instead, all exceptions extend
+// PyException directly, but they're logically grouped as ZerobusError exceptions.
 #[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyZerobusError;
 
 #[pymethods]
 impl PyZerobusError {
-    // Empty implementation - base class for exception hierarchy
-    // This is required for PyO3 to recognize it as a valid base class
-    // for other exception classes to extend
+    // Base exception class for Zerobus errors
 }
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyConfigurationError;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyAuthenticationError;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyConnectionError;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyConversionError;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyTransmissionError;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyRetryExhausted;
 
-#[pyclass(extends=PyZerobusError)]
+#[pyclass(extends=PyException)]
 #[derive(Debug)]
 pub struct PyTokenRefreshError;
 
