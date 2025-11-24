@@ -309,7 +309,7 @@ impl DebugWriter {
     /// Returns error if flush fails.
     pub async fn flush(&self) -> Result<(), ZerobusError> {
         // Flush Arrow writer
-        let mut arrow_guard = self.arrow_writer.lock().await;
+        let arrow_guard = self.arrow_writer.lock().await;
         if let Some(ref _writer) = *arrow_guard {
             // Arrow FileWriter doesn't have explicit flush, but we can ensure it's written
             // The writer buffers internally and writes on finish

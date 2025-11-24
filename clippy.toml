@@ -1,20 +1,5 @@
 # Clippy configuration for arrow-zerobus-sdk-wrapper
-
-# Allow some common patterns
-allow = [
-    "too_many_arguments",  # Sometimes necessary for configuration structs
-    "module_name_repetitions",  # Common in Rust modules
-]
-
-# Deny warnings that should be errors
-deny = [
-    "unsafe_code",  # No unsafe code unless explicitly justified
-]
-
-# Set pedantic level for strict code quality
-warn = [
-    "pedantic",
-    "nursery",
-    "cargo",
-]
-
+#
+# Note: Clippy lint levels (allow, deny, warn) are configured via
+# attributes in code or via cargo clippy command line flags, not in this file.
+# This file only contains configuration options for specific lints.

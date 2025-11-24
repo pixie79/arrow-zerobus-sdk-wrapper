@@ -5,9 +5,11 @@
 
 use crate::config::OtlpConfig;
 use crate::error::ZerobusError;
+use std::sync::Arc;
+use tracing::warn;
 
 #[cfg(feature = "observability")]
-use otlp_arrow_library::{Config as OtlpLibraryConfig, ConfigBuilder, OtlpLibrary};
+use otlp_arrow_library::{Config as OtlpLibraryConfig, OtlpLibrary};
 
 /// Observability manager for collecting metrics and traces
 ///
@@ -33,16 +35,14 @@ impl ObservabilityManager {
     /// Returns `Some(ObservabilityManager)` if observability is enabled and
     /// initialization succeeds, or `None` if disabled or initialization fails.
     pub fn new(config: Option<OtlpConfig>) -> Option<Self> {
-        let _config = match config {
-            Some(c) => c,
-            None => return None,
-        };
+        if config.is_none() {
+            return None;
+        }
 
         #[cfg(feature = "observability")]
         {
             // Synchronous initialization is not supported - use new_async instead
             // This method returns None to indicate async initialization is required
-            let _config = config; // Suppress unused variable warning
             None
         }
 
@@ -56,7 +56,7 @@ impl ObservabilityManager {
     ///
     /// This method properly initializes the OtlpLibrary asynchronously.
     pub async fn new_async(config: Option<OtlpConfig>) -> Option<Self> {
-        let _config = match config {
+        let config = match config {
             Some(c) => c,
             None => return None,
         };
@@ -261,7 +261,6 @@ impl ObservabilitySpan {
             SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState,
         };
         use opentelemetry::KeyValue;
-        use opentelemetry_sdk::Resource;
         use std::time::{Duration, SystemTime};
 
         // Generate random trace and span IDs
