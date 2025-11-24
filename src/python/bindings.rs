@@ -15,7 +15,7 @@ use arrow::datatypes::DataType;
 use arrow::record_batch::RecordBatch;
 use pyo3::exceptions::{PyException, PyNotImplementedError, PyTypeError};
 use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::types::{PyDict, PyModule};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
