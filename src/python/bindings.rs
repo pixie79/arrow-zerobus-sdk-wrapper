@@ -40,7 +40,8 @@ pub fn register_module(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 
 /// Convert Rust ZerobusError to Python exception
-pub(crate) fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
+#[cfg(test)]
+pub fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
     match error {
         ZerobusError::ConfigurationError(msg) => PyConfigurationError::new_err(msg),
         ZerobusError::AuthenticationError(msg) => PyAuthenticationError::new_err(msg),

@@ -5,6 +5,10 @@
 
 pub mod bindings;
 
+// Re-export for tests
+#[cfg(test)]
+pub use bindings::rust_error_to_python_error;
+
 use pyo3::prelude::*;
 
 /// Python module definition
