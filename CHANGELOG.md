@@ -130,6 +130,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Code cleanup and refactoring (ongoing)
+- **docs**: Amended constitution to v1.1.0 - Added Principle VI: Commit Workflow Standards
+  - Requires CHANGELOG.md updates, cargo fmt, cargo clippy, and tests passing before commits
+  - Requires all commits to be GPG signed
+  - Updated Quality Gates to enforce commit workflow requirements
 
 ---
 
