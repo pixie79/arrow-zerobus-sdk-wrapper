@@ -3,6 +3,10 @@
 //! This module implements Python bindings for the Zerobus SDK Wrapper,
 //! providing a Pythonic API that matches the Rust API functionality.
 
+// PyO3's #[pymethods] macro generates non-local impl blocks, which is necessary for bindings
+// This lint must be disabled for PyO3 bindings to work correctly
+#![allow(non_local_definitions)]
+
 use crate::config::OtlpConfig;
 use crate::config::WrapperConfiguration;
 use crate::error::ZerobusError;
