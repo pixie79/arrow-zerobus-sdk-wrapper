@@ -69,7 +69,7 @@ impl ObservabilityManager {
                     library: Some(Arc::new(library)),
                 }),
                 Err(e) => {
-                    warn!("Failed to initialize OtlpLibrary: {}", e);
+                    tracing::warn!("Failed to initialize OtlpLibrary: {}", e);
                     None
                 }
             }
