@@ -137,12 +137,13 @@ impl PyTokenRefreshError {
 /// Python wrapper for WrapperConfiguration
 #[pyclass]
 #[derive(Clone)]
+#[allow(non_local_definitions)]
 pub struct PyWrapperConfiguration {
     inner: WrapperConfiguration,
 }
 
 #[pymethods]
-#[allow(clippy::too_many_arguments, non_local_definitions)]
+#[allow(clippy::too_many_arguments)]
 impl PyWrapperConfiguration {
     #[new]
     #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
@@ -264,13 +265,13 @@ impl PyTransmissionResult {
 /// Thread-safe wrapper that handles Arrow RecordBatch to Protobuf conversion,
 /// authentication, retry logic, and transmission to Zerobus.
 #[pyclass]
+#[allow(non_local_definitions)]
 pub struct PyZerobusWrapper {
     inner: Arc<ZerobusWrapper>,
     runtime: Arc<Runtime>,
 }
 
 #[pymethods]
-#[allow(non_local_definitions)]
 impl PyZerobusWrapper {
     #[new]
     fn new(config: PyWrapperConfiguration) -> PyResult<Self> {
