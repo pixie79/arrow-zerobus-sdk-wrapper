@@ -5,7 +5,7 @@
 
 pub mod bindings;
 
-// Re-export for tests
+// Re-export for tests (tests are in separate crate)
 #[cfg(test)]
 pub use bindings::rust_error_to_python_error;
 
