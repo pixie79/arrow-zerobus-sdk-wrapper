@@ -238,31 +238,26 @@ pub struct PyTransmissionResult {
 #[pymethods]
 impl PyTransmissionResult {
     #[getter]
-    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn success(&self) -> bool {
         self.inner.success
     }
 
     #[getter]
-    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn error(&self) -> Option<String> {
         self.inner.error.as_ref().map(|e| e.to_string())
     }
 
     #[getter]
-    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn attempts(&self) -> u32 {
         self.inner.attempts
     }
 
     #[getter]
-    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn latency_ms(&self) -> Option<u64> {
         self.inner.latency_ms
     }
 
     #[getter]
-    #[cfg_attr(test, allow(dead_code))]
     pub(crate) fn batch_size_bytes(&self) -> usize {
         self.inner.batch_size_bytes
     }
