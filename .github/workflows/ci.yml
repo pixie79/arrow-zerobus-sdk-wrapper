@@ -35,21 +35,12 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Set PYO3_PYTHON environment variable
+      - name: Install Python development libraries (Linux)
+        if: matrix.os == 'ubuntu-latest'
         shell: bash
         run: |
-          # Find Python executable and set PYO3_PYTHON for PyO3
-          if command -v python3.11 &> /dev/null; then
-            PYTHON_EXEC=$(command -v python3.11)
-          elif command -v python3 &> /dev/null; then
-            PYTHON_EXEC=$(command -v python3)
-          else
-            echo "Error: Python 3.11+ not found" >&2
-            exit 1
-          fi
-          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
-          echo "Using Python: $PYTHON_EXEC"
-          $PYTHON_EXEC --version
+          sudo apt-get update
+          sudo apt-get install -y python3.11-dev python3-dev
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -165,21 +156,12 @@ jobs:
         with:
           python-version: '3.11'
       
-      - name: Set PYO3_PYTHON environment variable
+      - name: Install Python development libraries (Linux)
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          # Find Python executable and set PYO3_PYTHON for PyO3
-          if command -v python3.11 &> /dev/null; then
-            PYTHON_EXEC=$(command -v python3.11)
-          elif command -v python3 &> /dev/null; then
-            PYTHON_EXEC=$(command -v python3)
-          else
-            echo "Error: Python 3.11+ not found" >&2
-            exit 1
-          fi
-          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
-          echo "Using Python: $PYTHON_EXEC"
-          $PYTHON_EXEC --version
+          sudo apt-get update
+          sudo apt-get install -y python3.11-dev python3-dev
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
