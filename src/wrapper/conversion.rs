@@ -498,6 +498,9 @@ fn arrow_type_to_protobuf_type(
             // For lists, we need to extract the inner type and convert it
             // Lists in Protobuf are represented as repeated fields
             // The field type will be set to the inner type, and label will be Repeated
+            // Note: This is recursive and could theoretically cause infinite recursion
+            // if a list contains itself (e.g., List<List>), but this is not a common
+            // pattern in Arrow schemas. If needed, a depth check could be added.
             arrow_type_to_protobuf_type(inner_type.data_type())
         }
         DataType::Struct(_) => Ok(Type::Message), // Nested message

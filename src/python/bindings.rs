@@ -183,17 +183,17 @@ impl PyWrapperConfiguration {
                     let endpoint = dict
                         .get_item("endpoint")?
                         .and_then(|v| v.extract::<String>().ok());
-                    
+
                     let output_dir = dict
                         .get_item("output_dir")?
                         .and_then(|v| v.extract::<String>().ok())
                         .map(|s| std::path::PathBuf::from(s));
-                    
+
                     let write_interval_secs = dict
                         .get_item("write_interval_secs")?
                         .and_then(|v| v.extract::<u64>().ok())
                         .unwrap_or(5);
-                    
+
                     let log_level = dict
                         .get_item("log_level")?
                         .and_then(|v| v.extract::<String>().ok())
