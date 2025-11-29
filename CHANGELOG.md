@@ -120,6 +120,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2025-01-27
+
+### Added
+- **feat**: New `OtlpSdkConfig` structure aligned with otlp-rust-service SDK requirements
+- **feat**: Direct SDK ConfigBuilder usage, eliminating conversion layer
+- **feat**: Python test support with PyO3 pytest workaround (`pytest-forked`)
+- **feat**: Comprehensive test suite for SDK integration (unit and integration tests)
+- **docs**: PyO3 pytest workaround documentation (`docs/PYO3_PYTEST_WORKAROUND.md`)
+- **docs**: Python test helper script (`scripts/test-python.sh`)
+
+### Changed
+- **BREAKING**: `OtlpConfig` replaced with `OtlpSdkConfig` (breaking change)
+  - Removed `extra: HashMap<String, Value>` field
+  - Added `output_dir: Option<PathBuf>` field
+  - Added `write_interval_secs: u64` field (default: 5)
+  - Direct mapping to SDK ConfigBuilder requirements
+- **BREAKING**: `ObservabilityManager::new_async()` now accepts `Option<OtlpSdkConfig>` instead of `Option<OtlpConfig>`
+- **BREAKING**: Removed synchronous `ObservabilityManager::new()` method (dead code)
+- **chore**: Removed ~135 lines of dead code:
+  - `create_batch_metrics()` method
+  - `create_span_data()` method
+  - `convert_config()` method
+  - Synchronous `new()` method
+- **chore**: Updated observability to use tracing infrastructure (SDK picks up events automatically)
+- **chore**: Updated all tests to use `OtlpSdkConfig`
+- **chore**: Updated Python bindings to use `OtlpSdkConfig`
+- **chore**: Updated configuration loader to support `OtlpSdkConfig`
+- **chore**: Updated CI workflow to install `pytest-forked` for Python tests
+
+### Fixed
+- **fix**: Python tests now work correctly with PyO3 pytest workaround
+- **fix**: SDK initialization uses direct ConfigBuilder instead of conversion layer
+- **fix**: Metrics and traces now use SDK infrastructure via tracing events
+
+### Migration Guide
+
+**Before (0.1.x)**:
+```rust
+use arrow_zerobus_sdk_wrapper::{OtlpConfig, ObservabilityManager};
+
+let config = OtlpConfig {
+    endpoint: Some("https://otlp-endpoint".to_string()),
+    log_level: "info".to_string(),
+    extra: HashMap::new(),
+};
+```
+
+**After (0.2.0)**:
+```rust
+use arrow_zerobus_sdk_wrapper::{OtlpSdkConfig, ObservabilityManager};
+use std::path::PathBuf;
+
+let config = OtlpSdkConfig {
+    endpoint: Some("https://otlp-endpoint".to_string()),
+    output_dir: Some(PathBuf::from("/tmp/otlp")),
+    write_interval_secs: 5,
+    log_level: "info".to_string(),
+};
+```
+
+---
+
 ## [Unreleased]
 
 ### Added
@@ -140,6 +202,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+[0.2.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.0
 

@@ -43,6 +43,6 @@ pub mod wrapper;
 #[cfg(feature = "python")]
 pub mod python;
 
-pub use config::{OtlpConfig, WrapperConfiguration};
+pub use config::{OtlpConfig, OtlpSdkConfig, WrapperConfiguration};
 pub use error::ZerobusError;
 pub use wrapper::{TransmissionResult, ZerobusWrapper};

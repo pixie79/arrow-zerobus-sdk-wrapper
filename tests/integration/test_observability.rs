@@ -1,8 +1,9 @@
 //! Integration test for observability
 //!
 //! Verifies that metrics and traces are exported when observability is enabled.
+//! Uses tracing infrastructure which the otlp-rust-service SDK picks up.
 
-use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, ZerobusWrapper, OtlpConfig};
+use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, ZerobusWrapper, OtlpSdkConfig};
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
@@ -23,9 +24,11 @@ async fn test_observability_metrics_export() {
     )
     .with_credentials("client_id".to_string(), "client_secret".to_string())
     .with_unity_catalog("https://unity-catalog-url".to_string())
-    .with_observability(OtlpConfig {
-        endpoint: Some(otlp_output_dir.to_string_lossy().to_string()),
-        extra: std::collections::HashMap::new(),
+    .with_observability(OtlpSdkConfig {
+        endpoint: None,
+        output_dir: Some(otlp_output_dir.clone()),
+        write_interval_secs: 1, // Fast flush for testing
+        log_level: "info".to_string(),
     });
 
     // Initialize wrapper with observability
@@ -80,9 +83,11 @@ async fn test_observability_traces_export() {
     )
     .with_credentials("client_id".to_string(), "client_secret".to_string())
     .with_unity_catalog("https://unity-catalog-url".to_string())
-    .with_observability(OtlpConfig {
-        endpoint: Some(otlp_output_dir.to_string_lossy().to_string()),
-        extra: std::collections::HashMap::new(),
+    .with_observability(OtlpSdkConfig {
+        endpoint: None,
+        output_dir: Some(otlp_output_dir.clone()),
+        write_interval_secs: 1, // Fast flush for testing
+        log_level: "info".to_string(),
     });
 
     // Initialize wrapper with observability

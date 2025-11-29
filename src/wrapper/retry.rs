@@ -57,7 +57,34 @@ impl RetryConfig {
     ///
     /// Returns the result of the function if successful, or `RetryExhausted` error
     /// if all retry attempts are exhausted.
-    pub async fn execute_with_retry<F, Fut, T>(&self, mut f: F) -> Result<T, ZerobusError>
+    pub async fn execute_with_retry<F, Fut, T>(&self, f: F) -> Result<T, ZerobusError>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<T, ZerobusError>>,
+    {
+        let (result, _) = self.execute_with_retry_tracked(f).await;
+        result
+    }
+
+    /// Execute a function with retry logic and track attempt count
+    ///
+    /// Retries the function with exponential backoff + jitter if it returns
+    /// a retryable error. Returns both the result and the number of attempts made.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - Async function to execute
+    ///
+    /// # Returns
+    ///
+    /// Returns a tuple of (result, attempts) where:
+    /// - `result`: The result of the function if successful, or `RetryExhausted` error
+    ///   if all retry attempts are exhausted.
+    /// - `attempts`: The number of attempts made (1-indexed, so 1 means first attempt succeeded)
+    pub async fn execute_with_retry_tracked<F, Fut, T>(
+        &self,
+        mut f: F,
+    ) -> (Result<T, ZerobusError>, u32)
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<T, ZerobusError>>,
@@ -65,14 +92,15 @@ impl RetryConfig {
         let mut last_error = None;
 
         for attempt in 0..self.max_attempts {
+            let attempt_number = attempt + 1; // 1-indexed
             match f().await {
-                Ok(result) => return Ok(result),
+                Ok(result) => return (Ok(result), attempt_number),
                 Err(e) => {
                     last_error = Some(e.clone());
 
                     // Check if error is retryable
                     if !e.is_retryable() {
-                        return Err(e);
+                        return (Err(e), attempt_number);
                     }
 
                     // Don't sleep after the last attempt
@@ -85,14 +113,17 @@ impl RetryConfig {
         }
 
         // All retries exhausted
-        Err(ZerobusError::RetryExhausted(format!(
-            "All {} retry attempts exhausted. Last error: {}",
+        (
+            Err(ZerobusError::RetryExhausted(format!(
+                "All {} retry attempts exhausted. Last error: {}",
+                self.max_attempts,
+                last_error
+                    .as_ref()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            ))),
             self.max_attempts,
-            last_error
-                .as_ref()
-                .map(|e| e.to_string())
-                .unwrap_or_else(|| "unknown".to_string())
-        )))
+        )
     }
 
     /// Calculate delay for the given attempt number

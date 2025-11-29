@@ -1,10 +1,8 @@
 name: CI
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+  push: {}  # Run on push to any branch
+  pull_request: {}  # Run on PRs to any branch
 
 jobs:
   test:
@@ -290,17 +288,30 @@ jobs:
           source .venv/bin/activate
           maturin develop --release
       
-      - name: Install pytest
+      - name: Install pytest and dependencies
         shell: bash
         run: |
           source .venv/bin/activate
-          pip install pytest pytest-cov
+          # Install pytest with PyO3 workaround dependencies
+          pip install pytest pytest-cov pytest-forked
       
       - name: Run Python tests
         shell: bash
         run: |
           source .venv/bin/activate
-          pytest tests/python/ -v
+          # Set environment variable to work around PyO3 pytest issues
+          export PYO3_NO_PYTHON_VERSION_CHECK=1
+          # Run pytest with forked execution to prevent GIL issues
+          pytest tests/python/ -v --forked
+
+      - name: Build Python package (wheel)
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          # Build distributable wheel package
+          maturin build --release
+          # Verify wheel was created
+          ls -la target/wheels/*.whl || echo "Warning: No wheel file found"
 
   benchmarks:
     name: Performance Benchmarks

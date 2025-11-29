@@ -11,9 +11,67 @@ use std::path::PathBuf;
 pub struct OtlpConfig {
     /// OTLP endpoint URL (optional, uses default if not provided)
     pub endpoint: Option<String>,
+    /// Log level filter for tracing (e.g., "info", "debug", "warn", "error")
+    /// Controls which log events are exported via tracing
+    /// Default: "info"
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
     /// Additional OTLP configuration options
     #[serde(flatten)]
     pub extra: std::collections::HashMap<String, serde_json::Value>,
+}
+
+fn default_log_level() -> String {
+    "info".to_string()
+}
+
+/// OpenTelemetry SDK configuration
+///
+/// This configuration structure aligns with the otlp-rust-service SDK requirements.
+/// It replaces `OtlpConfig` as a breaking change to simplify configuration and
+/// directly map to SDK ConfigBuilder fields.
+///
+/// # Migration from OtlpConfig
+///
+/// The old `OtlpConfig` structure had:
+/// - `endpoint: Option<String>`
+/// - `log_level: String`
+/// - `extra: HashMap<String, Value>`
+///
+/// The new `OtlpSdkConfig` structure has:
+/// - `endpoint: Option<String>` - OTLP endpoint URL for remote export
+/// - `output_dir: Option<PathBuf>` - Output directory for file-based export
+/// - `write_interval_secs: u64` - Write interval in seconds (default: 5)
+/// - `log_level: String` - Log level for tracing (default: "info")
+///
+/// The `extra` field has been removed as it's no longer needed with direct SDK config mapping.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtlpSdkConfig {
+    /// OTLP endpoint URL for remote export (optional)
+    pub endpoint: Option<String>,
+    /// Output directory for file-based export (optional)
+    pub output_dir: Option<PathBuf>,
+    /// Write interval in seconds for file-based export (default: 5)
+    #[serde(default = "default_write_interval")]
+    pub write_interval_secs: u64,
+    /// Log level for tracing (default: "info")
+    #[serde(default = "default_log_level")]
+    pub log_level: String,
+}
+
+fn default_write_interval() -> u64 {
+    5
+}
+
+impl Default for OtlpSdkConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: None,
+            output_dir: None,
+            write_interval_secs: 5,
+            log_level: "info".to_string(),
+        }
+    }
 }
 
 /// Complete configuration for initializing the wrapper
@@ -36,7 +94,7 @@ pub struct WrapperConfiguration {
     /// Enable/disable OpenTelemetry observability (default: false)
     pub observability_enabled: bool,
     /// OpenTelemetry configuration (optional)
-    pub observability_config: Option<OtlpConfig>,
+    pub observability_config: Option<OtlpSdkConfig>,
     /// Enable/disable debug file output (default: false)
     pub debug_enabled: bool,
     /// Output directory for debug files (required if debug_enabled)
@@ -116,8 +174,8 @@ impl WrapperConfiguration {
     ///
     /// # Arguments
     ///
-    /// * `config` - OpenTelemetry configuration
-    pub fn with_observability(mut self, config: OtlpConfig) -> Self {
+    /// * `config` - OpenTelemetry SDK configuration
+    pub fn with_observability(mut self, config: OtlpSdkConfig) -> Self {
         self.observability_enabled = true;
         self.observability_config = Some(config);
         self
@@ -225,6 +283,61 @@ impl WrapperConfiguration {
             return Err(ZerobusError::ConfigurationError(format!(
                 "retry_max_delay_ms ({}) must be >= retry_base_delay_ms ({})",
                 self.retry_max_delay_ms, self.retry_base_delay_ms
+            )));
+        }
+
+        Ok(())
+    }
+}
+
+impl OtlpSdkConfig {
+    /// Validate the SDK configuration
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` if configuration is valid, or `Err(ZerobusError)` if invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigurationError` if:
+    /// - `endpoint` is provided but not a valid URL
+    /// - `output_dir` is provided but not a valid path
+    /// - `write_interval_secs` is 0
+    /// - `log_level` is not a valid log level
+    pub fn validate(&self) -> Result<(), ZerobusError> {
+        // Validate endpoint URL if provided
+        if let Some(endpoint) = &self.endpoint {
+            if !endpoint.starts_with("https://") && !endpoint.starts_with("http://") {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "endpoint must start with 'https://' or 'http://', got: '{}'",
+                    endpoint
+                )));
+            }
+        }
+
+        // Validate output_dir path if provided
+        // Note: PathBuf is always either absolute or relative, so we just check if it's empty
+        if let Some(output_dir) = &self.output_dir {
+            if output_dir.as_os_str().is_empty() {
+                return Err(ZerobusError::ConfigurationError(
+                    "output_dir must not be empty".to_string(),
+                ));
+            }
+        }
+
+        // Validate write_interval_secs
+        if self.write_interval_secs == 0 {
+            return Err(ZerobusError::ConfigurationError(
+                "write_interval_secs must be > 0".to_string(),
+            ));
+        }
+
+        // Validate log_level
+        let valid_levels = ["trace", "debug", "info", "warn", "error"];
+        if !valid_levels.contains(&self.log_level.to_lowercase().as_str()) {
+            return Err(ZerobusError::ConfigurationError(format!(
+                "log_level must be one of {:?}, got: '{}'",
+                valid_levels, self.log_level
             )));
         }
 

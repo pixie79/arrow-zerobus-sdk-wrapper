@@ -1,6 +1,6 @@
 //! Unit tests for configuration types
 
-use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, OtlpConfig};
+use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, OtlpSdkConfig};
 use std::path::PathBuf;
 
 #[test]
@@ -46,9 +46,11 @@ fn test_config_with_unity_catalog() {
 
 #[test]
 fn test_config_with_observability() {
-    let otlp_config = OtlpConfig {
+    let otlp_config = OtlpSdkConfig {
         endpoint: Some("http://localhost:4317".to_string()),
-        extra: std::collections::HashMap::new(),
+        output_dir: Some(PathBuf::from("/tmp/otlp")),
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
     };
 
     let config = WrapperConfiguration::new(
@@ -59,6 +61,94 @@ fn test_config_with_observability() {
 
     assert!(config.observability_enabled);
     assert!(config.observability_config.is_some());
+}
+
+#[test]
+fn test_otlp_sdk_config_default() {
+    let config = OtlpSdkConfig {
+        endpoint: None,
+        output_dir: None,
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
+    };
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_valid_endpoint() {
+    let config = OtlpSdkConfig {
+        endpoint: Some("https://otlp.example.com".to_string()),
+        output_dir: None,
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
+    };
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_invalid_endpoint() {
+    let config = OtlpSdkConfig {
+        endpoint: Some("invalid-url".to_string()),
+        output_dir: None,
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
+    };
+
+    assert!(config.validate().is_err());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_valid_output_dir() {
+    let config = OtlpSdkConfig {
+        endpoint: None,
+        output_dir: Some(PathBuf::from("/tmp/otlp")),
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
+    };
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_zero_write_interval() {
+    let config = OtlpSdkConfig {
+        endpoint: None,
+        output_dir: None,
+        write_interval_secs: 0,
+        log_level: "info".to_string(),
+    };
+
+    assert!(config.validate().is_err());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_invalid_log_level() {
+    let config = OtlpSdkConfig {
+        endpoint: None,
+        output_dir: None,
+        write_interval_secs: 5,
+        log_level: "invalid".to_string(),
+    };
+
+    assert!(config.validate().is_err());
+}
+
+#[test]
+fn test_otlp_sdk_config_validate_valid_log_levels() {
+    let valid_levels = ["trace", "debug", "info", "warn", "error"];
+
+    for level in valid_levels {
+        let config = OtlpSdkConfig {
+            endpoint: None,
+            output_dir: None,
+            write_interval_secs: 5,
+            log_level: level.to_string(),
+        };
+
+        assert!(config.validate().is_ok(), "Log level '{}' should be valid", level);
+    }
 }
 
 #[test]

@@ -7,7 +7,7 @@
 // This lint must be disabled for PyO3 bindings to work correctly
 #![allow(non_local_definitions)]
 
-use crate::config::OtlpConfig;
+use crate::config::OtlpSdkConfig;
 use crate::config::WrapperConfiguration;
 use crate::error::ZerobusError;
 use crate::wrapper::{TransmissionResult, ZerobusWrapper};
@@ -184,26 +184,35 @@ impl PyWrapperConfiguration {
                         .get_item("endpoint")?
                         .and_then(|v| v.extract::<String>().ok());
 
-                    // Extract any additional configuration from the dict
-                    let mut extra = std::collections::HashMap::new();
-                    for (key, value) in dict.iter() {
-                        let key_str = key.extract::<String>()?;
-                        if key_str != "endpoint" {
-                            // Try to extract as JSON-serializable value
-                            if let Ok(json_str) = value.extract::<String>() {
-                                if let Ok(json_val) =
-                                    serde_json::from_str::<serde_json::Value>(&json_str)
-                                {
-                                    extra.insert(key_str, json_val);
-                                }
-                            }
-                        }
-                    }
+                    let output_dir = dict
+                        .get_item("output_dir")?
+                        .and_then(|v| v.extract::<String>().ok())
+                        .map(|s| std::path::PathBuf::from(s));
 
-                    Ok::<OtlpConfig, PyErr>(OtlpConfig { endpoint, extra })
+                    let write_interval_secs = dict
+                        .get_item("write_interval_secs")?
+                        .and_then(|v| v.extract::<u64>().ok())
+                        .unwrap_or(5);
+
+                    let log_level = dict
+                        .get_item("log_level")?
+                        .and_then(|v| v.extract::<String>().ok())
+                        .unwrap_or_else(|| "info".to_string());
+
+                    let otlp_config = OtlpSdkConfig {
+                        endpoint,
+                        output_dir,
+                        write_interval_secs,
+                        log_level,
+                    };
+                    // Validate configuration before using it
+                    otlp_config.validate().map_err(|e| {
+                        PyException::new_err(format!("Invalid OTLP SDK configuration: {}", e))
+                    })?;
+                    Ok::<OtlpSdkConfig, PyErr>(otlp_config)
                 })?
             } else {
-                OtlpConfig::default()
+                OtlpSdkConfig::default()
             };
             config = config.with_observability(otlp_config);
         }

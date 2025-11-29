@@ -59,6 +59,20 @@ pub fn record_batch_to_protobuf_bytes(
         .filter_map(|f| f.name.as_ref().map(|name| (name.clone(), f)))
         .collect();
 
+    // Build nested type name -> nested descriptor map
+    let nested_types_by_name: std::collections::HashMap<String, &DescriptorProto> = descriptor
+        .nested_type
+        .iter()
+        .filter_map(|nt| {
+            nt.name.as_ref().map(|name| {
+                // Extract the full type name (e.g., ".ZerobusMessage._metadata" -> "_metadata")
+                // The type_name in FieldDescriptorProto uses format ".ParentMessage.NestedMessage"
+                // We need to match on the nested message name
+                (name.clone(), nt)
+            })
+        })
+        .collect();
+
     let mut protobuf_bytes_list = Vec::new();
 
     // Convert each row directly from Arrow to Protobuf
@@ -80,7 +94,7 @@ pub fn record_batch_to_protobuf_bytes(
                     array,
                     row_idx,
                     descriptor,
-                    None, // descriptor_pool - TODO: support nested types
+                    Some(&nested_types_by_name),
                 ) {
                     return Err(ZerobusError::ConversionError(format!(
                         "Failed to encode field '{}' at row {}: {}",
@@ -113,7 +127,7 @@ pub fn record_batch_to_protobuf_bytes(
 /// * `array` - Arrow array containing the field values
 /// * `row_idx` - Row index to extract value from
 /// * `parent_descriptor` - Parent message descriptor (for nested types)
-/// * `descriptor_pool` - Optional descriptor pool for nested types
+/// * `nested_types` - Optional map of nested type names to descriptors
 fn encode_arrow_field_to_protobuf(
     buffer: &mut Vec<u8>,
     field_number: i32,
@@ -121,7 +135,7 @@ fn encode_arrow_field_to_protobuf(
     array: &Arc<dyn Array>,
     row_idx: usize,
     _parent_descriptor: &DescriptorProto,
-    _descriptor_pool: Option<&std::collections::HashMap<String, DescriptorProto>>,
+    nested_types: Option<&std::collections::HashMap<String, &DescriptorProto>>,
 ) -> Result<(), ZerobusError> {
     if array.is_null(row_idx) {
         // Protobuf doesn't encode null/optional fields - just skip
@@ -151,10 +165,102 @@ fn encode_arrow_field_to_protobuf(
 
     // Handle single nested messages (type 11 = Message)
     if protobuf_type == 11 {
-        // TODO: Implement nested message encoding
-        // For now, skip nested messages
-        debug!("Skipping nested message field (not yet implemented)");
-        return Ok(());
+        // Find the nested type descriptor
+        if let Some(type_name) = &field_desc.type_name {
+            // Extract nested message name from type_name (format: ".ParentMessage.NestedMessage")
+            // We need to find the nested descriptor
+            let nested_descriptor = if let Some(nested_map) = nested_types {
+                // Extract the nested message name from type_name
+                // type_name format: ".ZerobusMessage.ZerobusMessage_FieldName" -> look for "ZerobusMessage_FieldName"
+                // The nested type name is the last part after splitting by "."
+                let parts: Vec<&str> = type_name.trim_start_matches('.').split('.').collect();
+                if let Some(last_part) = parts.last() {
+                    nested_map.get(*last_part)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(nested_desc) = nested_descriptor {
+                // Encode nested message
+                if let Some(struct_array) = array.as_any().downcast_ref::<StructArray>() {
+                    // Encode as length-delimited (wire type 2)
+                    let wire_type = 2u32;
+                    encode_tag(buffer, field_number, wire_type)?;
+
+                    // Encode nested message fields
+                    let mut nested_buffer = Vec::new();
+                    let nested_schema = struct_array.fields();
+
+                    // Build field name -> field descriptor map for nested message
+                    let nested_field_by_name: std::collections::HashMap<
+                        String,
+                        &FieldDescriptorProto,
+                    > = nested_desc
+                        .field
+                        .iter()
+                        .filter_map(|f| f.name.as_ref().map(|name| (name.clone(), f)))
+                        .collect();
+
+                    // Recursively build nested types map for nested message
+                    let nested_nested_types: std::collections::HashMap<String, &DescriptorProto> =
+                        nested_desc
+                            .nested_type
+                            .iter()
+                            .filter_map(|nt| nt.name.as_ref().map(|name| (name.clone(), nt)))
+                            .collect();
+
+                    // Encode each field in the nested struct
+                    for (field_idx, field) in nested_schema.iter().enumerate() {
+                        let nested_array = struct_array.column(field_idx);
+
+                        if let Some(nested_field_desc) = nested_field_by_name.get(field.name()) {
+                            let nested_field_number = nested_field_desc.number.unwrap_or(0);
+
+                            if let Err(e) = encode_arrow_field_to_protobuf(
+                                &mut nested_buffer,
+                                nested_field_number,
+                                nested_field_desc,
+                                nested_array,
+                                row_idx,
+                                nested_desc,
+                                Some(&nested_nested_types),
+                            ) {
+                                return Err(ZerobusError::ConversionError(format!(
+                                    "Failed to encode nested field '{}' at row {}: {}",
+                                    field.name(),
+                                    row_idx,
+                                    e
+                                )));
+                            }
+                        }
+                    }
+
+                    // Write length-delimited nested message
+                    encode_varint(buffer, nested_buffer.len() as u64)?;
+                    buffer.extend_from_slice(&nested_buffer);
+                    return Ok(());
+                } else {
+                    return Err(ZerobusError::ConversionError(format!(
+                        "Expected StructArray for nested message field '{}'",
+                        field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
+                    )));
+                }
+            } else {
+                return Err(ZerobusError::ConversionError(format!(
+                    "Nested type descriptor not found for field '{}' with type_name '{}'",
+                    field_desc.name.as_ref().unwrap_or(&"unknown".to_string()),
+                    type_name
+                )));
+            }
+        } else {
+            return Err(ZerobusError::ConversionError(format!(
+                "Nested message field '{}' missing type_name",
+                field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
+            )));
+        }
     }
 
     // Handle primitive types
@@ -293,9 +399,18 @@ fn encode_arrow_value_to_protobuf(
 pub fn generate_protobuf_descriptor(
     schema: &arrow::datatypes::Schema,
 ) -> Result<DescriptorProto, ZerobusError> {
+    generate_protobuf_descriptor_internal(schema, "ZerobusMessage")
+}
+
+/// Internal function to generate Protobuf descriptor with a given message name
+fn generate_protobuf_descriptor_internal(
+    schema: &arrow::datatypes::Schema,
+    message_name: &str,
+) -> Result<DescriptorProto, ZerobusError> {
     use prost_types::FieldDescriptorProto;
 
     let mut fields = Vec::new();
+    let mut nested_types = Vec::new();
     let mut field_number = 1;
 
     for field in schema.fields().iter() {
@@ -304,6 +419,27 @@ pub fn generate_protobuf_descriptor(
             field.data_type(),
             DataType::List(_) | DataType::LargeList(_)
         );
+
+        // Handle nested Struct types
+        let type_name = if field_type == Type::Message {
+            // Generate nested type descriptor for Struct fields
+            if let DataType::Struct(struct_fields) = field.data_type() {
+                let nested_message_name = format!("{}_{}", message_name, field.name());
+                let nested_type_name = format!(".{}.{}", message_name, nested_message_name);
+
+                // Recursively generate descriptor for nested struct
+                let nested_schema = arrow::datatypes::Schema::new(struct_fields.clone());
+                let nested_descriptor =
+                    generate_protobuf_descriptor_internal(&nested_schema, &nested_message_name)?;
+
+                nested_types.push(nested_descriptor);
+                Some(nested_type_name)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         fields.push(FieldDescriptorProto {
             name: Some(field.name().clone()),
@@ -314,7 +450,7 @@ pub fn generate_protobuf_descriptor(
                 Label::Optional as i32
             }),
             r#type: Some(field_type as i32),
-            type_name: None, // TODO: Handle nested types
+            type_name,
             extendee: None,
             default_value: None,
             oneof_index: None,
@@ -327,10 +463,10 @@ pub fn generate_protobuf_descriptor(
     }
 
     Ok(DescriptorProto {
-        name: Some("ZerobusMessage".to_string()),
+        name: Some(message_name.to_string()),
         field: fields,
         extension: vec![],
-        nested_type: vec![],
+        nested_type: nested_types,
         enum_type: vec![],
         extension_range: vec![],
         oneof_decl: vec![],
@@ -358,10 +494,14 @@ fn arrow_type_to_protobuf_type(
         DataType::Binary | DataType::LargeBinary => Ok(Type::Bytes),
         DataType::Timestamp(_, _) => Ok(Type::Int64), // Store as Int64 (nanoseconds)
         DataType::Date32 | DataType::Date64 => Ok(Type::Int64), // Store as Int64
-        DataType::List(_) | DataType::LargeList(_) => {
-            // For lists, we need to extract the inner type
-            // This is a simplified version - full implementation should handle nested types
-            Ok(Type::String) // Placeholder
+        DataType::List(inner_type) | DataType::LargeList(inner_type) => {
+            // For lists, we need to extract the inner type and convert it
+            // Lists in Protobuf are represented as repeated fields
+            // The field type will be set to the inner type, and label will be Repeated
+            // Note: This is recursive and could theoretically cause infinite recursion
+            // if a list contains itself (e.g., List<List>), but this is not a common
+            // pattern in Arrow schemas. If needed, a depth check could be added.
+            arrow_type_to_protobuf_type(inner_type.data_type())
         }
         DataType::Struct(_) => Ok(Type::Message), // Nested message
         _ => Err(ZerobusError::ConversionError(format!(

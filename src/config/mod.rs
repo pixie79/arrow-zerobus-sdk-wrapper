@@ -5,4 +5,4 @@
 pub mod loader;
 pub mod types;
 
-pub use types::{OtlpConfig, WrapperConfiguration};
+pub use types::{OtlpConfig, OtlpSdkConfig, WrapperConfiguration};
