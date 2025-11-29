@@ -234,9 +234,9 @@ impl ZerobusWrapper {
             .map(|obs| obs.start_send_batch_span(&self.config.table_name));
 
         // Use retry logic for transmission
-        let result = self
+        let (result, attempts) = self
             .retry_config
-            .execute_with_retry(|| {
+            .execute_with_retry_tracked(|| {
                 let batch = batch.clone();
                 let wrapper = self.clone();
                 async move { wrapper.send_batch_internal(batch).await }
@@ -256,7 +256,7 @@ impl ZerobusWrapper {
             Ok(_) => Ok(TransmissionResult {
                 success: true,
                 error: None,
-                attempts: 1, // TODO: Track actual attempts from retry logic
+                attempts,
                 latency_ms: Some(latency_ms),
                 batch_size_bytes,
             }),
@@ -265,7 +265,7 @@ impl ZerobusWrapper {
                 Ok(TransmissionResult {
                     success: false,
                     error: Some(e),
-                    attempts: self.retry_config.max_attempts,
+                    attempts,
                     latency_ms: Some(latency_ms),
                     batch_size_bytes,
                 })
@@ -353,7 +353,7 @@ impl ZerobusWrapper {
 
         let mut stream_guard = self.stream.lock().await;
         if stream_guard.is_none() {
-            let _stream = crate::wrapper::zerobus::ensure_stream(
+            let stream = crate::wrapper::zerobus::ensure_stream(
                 sdk,
                 self.config.table_name.clone(),
                 descriptor.clone(),
@@ -361,21 +361,28 @@ impl ZerobusWrapper {
                 client_secret.clone(),
             )
             .await?;
-            *stream_guard = Some(_stream);
+            *stream_guard = Some(stream);
         }
-        let _stream = stream_guard.as_ref().unwrap();
+        let stream = stream_guard.as_mut().unwrap();
 
         // 5. Write each row to Zerobus
-        // TODO: Replace with actual Zerobus SDK method once API is confirmed
-        // The method name may be different (e.g., write, send, append, etc.)
-        // For now, we'll use a placeholder that compiles
-        #[allow(unused_variables)]
         for bytes in protobuf_bytes_list.iter() {
-            // Placeholder: Actual SDK method call will be implemented once API is confirmed
-            // Example: stream.write(bytes).await? or stream.send(bytes).await?
-            // This is a temporary workaround to allow compilation
-            debug!("Would send {} bytes to Zerobus stream", bytes.len());
-            // TODO: Implement actual data transmission once Zerobus SDK API is confirmed
+            // Send bytes to Zerobus stream using ingest_record
+            // Vec<u8> implements Into<RecordPayload> which converts to RecordPayload::Proto
+            // ingest_record returns a Future that resolves to a Result containing another Future
+            let ingest_future = stream.ingest_record(bytes.clone()).await.map_err(|e| {
+                ZerobusError::ConnectionError(format!("Failed to create ingest record: {}", e))
+            })?;
+
+            // Await the inner future to get the final result
+            ingest_future.await.map_err(|e| {
+                ZerobusError::ConnectionError(format!(
+                    "Failed to ingest record to Zerobus stream: {}",
+                    e
+                ))
+            })?;
+
+            debug!("Sent {} bytes to Zerobus stream", bytes.len());
         }
 
         debug!(
@@ -416,9 +423,14 @@ impl ZerobusWrapper {
 
         // Close stream if it exists
         let mut stream_guard = self.stream.lock().await;
-        if let Some(_stream) = stream_guard.take() {
-            // TODO: Close stream properly
-            debug!("Stream closed");
+        if let Some(mut stream) = stream_guard.take() {
+            // Close the stream gracefully
+            // ZerobusStream has a close() method that returns ZerobusResult
+            if let Err(e) = stream.close().await {
+                warn!("Error closing Zerobus stream: {}", e);
+            } else {
+                debug!("Stream closed successfully");
+            }
         }
 
         Ok(())

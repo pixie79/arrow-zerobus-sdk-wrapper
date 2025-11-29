@@ -24,6 +24,9 @@ pub struct ConfigYaml {
 pub struct ObservabilityYaml {
     pub enabled: Option<bool>,
     pub endpoint: Option<String>,
+    pub output_dir: Option<String>,
+    pub write_interval_secs: Option<u64>,
+    pub log_level: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,10 +88,12 @@ pub fn load_from_yaml<P: AsRef<Path>>(path: P) -> Result<WrapperConfiguration, Z
 
     if let Some(obs) = yaml.observability {
         if obs.enabled.unwrap_or(false) {
-            use crate::config::OtlpConfig;
-            let otlp_config = OtlpConfig {
+            use crate::config::OtlpSdkConfig;
+            let otlp_config = OtlpSdkConfig {
                 endpoint: obs.endpoint,
-                extra: std::collections::HashMap::new(),
+                output_dir: obs.output_dir.map(std::path::PathBuf::from),
+                write_interval_secs: obs.write_interval_secs.unwrap_or(5),
+                log_level: obs.log_level.unwrap_or_else(|| "info".to_string()),
             };
             config = config.with_observability(otlp_config);
         }
@@ -156,10 +161,17 @@ pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
     }
 
     if std::env::var("OTLP_ENABLED").unwrap_or_default() == "true" {
-        use crate::config::OtlpConfig;
-        let otlp_config = OtlpConfig {
+        use crate::config::OtlpSdkConfig;
+        let otlp_config = OtlpSdkConfig {
             endpoint: std::env::var("OTLP_ENDPOINT").ok(),
-            extra: std::collections::HashMap::new(),
+            output_dir: std::env::var("OTLP_OUTPUT_DIR")
+                .ok()
+                .map(std::path::PathBuf::from),
+            write_interval_secs: std::env::var("OTLP_WRITE_INTERVAL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5),
+            log_level: std::env::var("OTLP_LOG_LEVEL").unwrap_or_else(|_| "info".to_string()),
         };
         config = config.with_observability(otlp_config);
     }

@@ -1,9 +1,13 @@
 //! OpenTelemetry integration via otlp-rust-service
 //!
-//! This module uses the otlp-rust-service library for OpenTelemetry functionality.
-//! Provides a wrapper around OtlpLibrary for metrics and trace collection.
+//! This module uses the otlp-rust-service SDK for OpenTelemetry functionality.
+//! Metrics and traces are recorded via tracing, which the SDK infrastructure
+//! picks up and converts to OpenTelemetry format for export.
+//!
+//! The SDK handles all OpenTelemetry data structure creation internally,
+//! eliminating the need for manual ResourceMetrics or SpanData construction.
 
-use crate::config::OtlpConfig;
+use crate::config::OtlpSdkConfig;
 use crate::error::ZerobusError;
 
 #[cfg(feature = "observability")]
@@ -25,36 +29,19 @@ pub struct ObservabilityManager {
 }
 
 impl ObservabilityManager {
-    /// Create a new observability manager
+    /// Create observability manager asynchronously
+    ///
+    /// This method properly initializes the OtlpLibrary asynchronously.
     ///
     /// # Arguments
     ///
-    /// * `config` - Optional OTLP configuration. If None, observability is disabled.
+    /// * `config` - Optional OTLP SDK configuration. If None, observability is disabled.
     ///
     /// # Returns
     ///
     /// Returns `Some(ObservabilityManager)` if observability is enabled and
     /// initialization succeeds, or `None` if disabled or initialization fails.
-    pub fn new(config: Option<OtlpConfig>) -> Option<Self> {
-        config.as_ref()?;
-
-        #[cfg(feature = "observability")]
-        {
-            // Synchronous initialization is not supported - use new_async instead
-            // This method returns None to indicate async initialization is required
-            None
-        }
-
-        #[cfg(not(feature = "observability"))]
-        {
-            None
-        }
-    }
-
-    /// Create observability manager asynchronously
-    ///
-    /// This method properly initializes the OtlpLibrary asynchronously.
-    pub async fn new_async(config: Option<OtlpConfig>) -> Option<Self> {
+    pub async fn new_async(config: Option<OtlpSdkConfig>) -> Option<Self> {
         let _config = match config {
             Some(c) => c,
             None => return None,
@@ -62,7 +49,31 @@ impl ObservabilityManager {
 
         #[cfg(feature = "observability")]
         {
-            let library_config = Self::convert_config(_config);
+            use otlp_arrow_library::ConfigBuilder;
+
+            // Build SDK config directly from OtlpSdkConfig
+            let mut builder = ConfigBuilder::default();
+
+            // Set output directory if provided
+            if let Some(output_dir) = &_config.output_dir {
+                builder = builder.output_dir(output_dir.clone());
+            }
+
+            // Set write interval
+            builder = builder.write_interval_secs(_config.write_interval_secs);
+
+            // Configure tracing log level
+            let log_level = _config.log_level.to_lowercase();
+            std::env::set_var(
+                "RUST_LOG",
+                format!("arrow_zerobus_sdk_wrapper={}", log_level),
+            );
+
+            // Build config, using defaults if build fails
+            let library_config = builder.build().unwrap_or_else(|_| {
+                tracing::warn!("Failed to build SDK config, using defaults");
+                OtlpLibraryConfig::default()
+            });
 
             match OtlpLibrary::new(library_config).await {
                 Ok(library) => Some(Self {
@@ -81,34 +92,10 @@ impl ObservabilityManager {
         }
     }
 
-    /// Convert our OtlpConfig to otlp-rust-service Config
-    #[cfg(feature = "observability")]
-    fn convert_config(config: OtlpConfig) -> OtlpLibraryConfig {
-        use otlp_arrow_library::ConfigBuilder;
-        use std::path::PathBuf;
-
-        let mut builder = ConfigBuilder::default();
-
-        // Set output directory (default to /tmp/otlp if not specified)
-        let output_dir = config
-            .endpoint
-            .as_ref()
-            .map(|_| PathBuf::from("/tmp/otlp"))
-            .unwrap_or_else(|| PathBuf::from("/tmp/otlp"));
-
-        builder = builder.output_dir(output_dir);
-
-        // Set write interval (default 5 seconds)
-        builder = builder.write_interval_secs(5);
-
-        // Build config, using defaults if build fails
-        builder.build().unwrap_or_else(|_| {
-            // Fallback to default config if build fails
-            OtlpLibraryConfig::default()
-        })
-    }
-
     /// Record a batch transmission metric
+    ///
+    /// Uses tracing to record metrics, which are picked up by the otlp-rust-service SDK
+    /// infrastructure and converted to OpenTelemetry metrics.
     ///
     /// # Arguments
     ///
@@ -118,14 +105,34 @@ impl ObservabilityManager {
     pub async fn record_batch_sent(&self, batch_size_bytes: usize, success: bool, latency_ms: u64) {
         #[cfg(feature = "observability")]
         {
-            if let Some(library) = &self.library {
-                // Create ResourceMetrics for export
-                let metrics = Self::create_batch_metrics(batch_size_bytes, success, latency_ms);
+            if self.library.is_some() {
+                // Record metrics via tracing with structured fields
+                // The otlp-rust-service SDK infrastructure picks up these tracing events
+                // and converts them to OpenTelemetry metrics
+                tracing::info!(
+                    metric.name = "zerobus.batch.size_bytes",
+                    metric.value = batch_size_bytes,
+                    metric.unit = "bytes",
+                    batch_size_bytes = batch_size_bytes,
+                    success = success,
+                    latency_ms = latency_ms,
+                    "zerobus.batch.metrics"
+                );
 
-                // Export metrics using otlp-arrow-library
-                if let Err(e) = library.export_metrics(metrics).await {
-                    tracing::warn!("Failed to export metrics: {}", e);
-                }
+                tracing::info!(
+                    metric.name = "zerobus.batch.success",
+                    metric.value = if success { 1i64 } else { 0i64 },
+                    success = success,
+                    "zerobus.batch.metrics"
+                );
+
+                tracing::info!(
+                    metric.name = "zerobus.batch.latency_ms",
+                    metric.value = latency_ms,
+                    metric.unit = "ms",
+                    latency_ms = latency_ms,
+                    "zerobus.batch.metrics"
+                );
             }
         }
 
@@ -133,33 +140,6 @@ impl ObservabilityManager {
         {
             let _ = (batch_size_bytes, success, latency_ms);
         }
-    }
-
-    /// Create ResourceMetrics for batch transmission
-    ///
-    /// Creates a minimal ResourceMetrics structure that can be exported.
-    /// Note: ResourceMetrics fields are private in OpenTelemetry SDK 0.31.
-    /// We use ResourceMetrics::default() as shown in otlp-rust-service examples.
-    ///
-    /// The actual metric values (batch_size_bytes, success, latency_ms) are
-    /// logged via tracing and will be exported via the observability infrastructure.
-    #[cfg(feature = "observability")]
-    fn create_batch_metrics(
-        batch_size_bytes: usize,
-        success: bool,
-        latency_ms: u64,
-    ) -> opentelemetry_sdk::metrics::data::ResourceMetrics {
-        // Log metrics via tracing (will be picked up by observability infrastructure)
-        tracing::info!(
-            batch_size_bytes = batch_size_bytes,
-            success = success,
-            latency_ms = latency_ms,
-            "zerobus.batch.metrics"
-        );
-
-        // Create minimal ResourceMetrics using default() as shown in examples
-        // The library will handle the conversion and export
-        opentelemetry_sdk::metrics::data::ResourceMetrics::default()
     }
 
     /// Start a span for batch transmission operation
@@ -172,12 +152,14 @@ impl ObservabilityManager {
     ///
     /// Returns a span guard that ends the span when dropped
     pub fn start_send_batch_span(&self, table_name: &str) -> ObservabilitySpan {
+        let start_time = std::time::SystemTime::now();
         #[cfg(feature = "observability")]
         {
             // Create a span for the operation
-            // The span will be exported when dropped
+            // The span will be exported when dropped with correct timing
             ObservabilitySpan {
                 _table_name: table_name.to_string(),
+                start_time,
                 library: self.library.clone(),
             }
         }
@@ -187,6 +169,7 @@ impl ObservabilityManager {
             let _ = table_name;
             ObservabilitySpan {
                 _table_name: String::new(),
+                start_time,
             }
         }
     }
@@ -226,9 +209,11 @@ impl ObservabilityManager {
 
 /// Span guard for observability operations
 ///
-/// When dropped, automatically ends the span.
+/// When dropped, automatically ends the span with the correct end time.
 pub struct ObservabilitySpan {
     _table_name: String,
+    #[allow(dead_code)] // Used in Drop impl
+    start_time: std::time::SystemTime,
     #[cfg(feature = "observability")]
     library: Option<Arc<OtlpLibrary>>,
 }
@@ -237,69 +222,23 @@ impl Drop for ObservabilitySpan {
     fn drop(&mut self) {
         #[cfg(feature = "observability")]
         {
-            // Create and export span data
-            if let Some(library) = &self.library {
-                let span_data = Self::create_span_data(&self._table_name);
-                // Export span asynchronously (fire and forget)
-                let library_clone = library.clone();
-                let span_data_clone = span_data.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = library_clone.export_trace(span_data_clone).await {
-                        tracing::warn!("Failed to export trace: {}", e);
-                    }
-                });
+            if self.library.is_some() {
+                let end_time = std::time::SystemTime::now();
+                let duration = end_time
+                    .duration_since(self.start_time)
+                    .unwrap_or_default()
+                    .as_millis() as u64;
+
+                // Record span completion via tracing
+                // The otlp-rust-service SDK infrastructure picks up these tracing events
+                // and converts them to OpenTelemetry traces
+                tracing::info!(
+                    span.name = "zerobus.send_batch",
+                    span.table_name = %self._table_name,
+                    span.duration_ms = duration,
+                    "zerobus.send_batch.completed"
+                );
             }
-        }
-    }
-}
-
-impl ObservabilitySpan {
-    #[cfg(feature = "observability")]
-    fn create_span_data(table_name: &str) -> opentelemetry_sdk::trace::SpanData {
-        use opentelemetry::trace::{
-            SpanContext, SpanId, SpanKind, Status, TraceFlags, TraceId, TraceState,
-        };
-        use opentelemetry::KeyValue;
-        use std::time::{Duration, SystemTime};
-
-        // Generate random trace and span IDs
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let trace_bytes: [u8; 16] = rng.gen();
-        let span_bytes: [u8; 8] = rng.gen();
-
-        let trace_id = TraceId::from_bytes(trace_bytes);
-        let span_id = SpanId::from_bytes(span_bytes);
-
-        let span_context = SpanContext::new(
-            trace_id,
-            span_id,
-            TraceFlags::SAMPLED,
-            false,
-            TraceState::default(),
-        );
-
-        // Create a default parent span ID (no parent) - use INVALID as shown in tests
-        let parent_span_id = SpanId::INVALID;
-
-        opentelemetry_sdk::trace::SpanData {
-            span_context,
-            parent_span_id,
-            span_kind: SpanKind::Client,
-            name: std::borrow::Cow::Owned("zerobus.send_batch".to_string()),
-            start_time: SystemTime::now(),
-            end_time: SystemTime::now() + Duration::from_millis(1),
-            attributes: vec![KeyValue::new("table.name", table_name.to_string())],
-            events: opentelemetry_sdk::trace::SpanEvents::default(),
-            links: opentelemetry_sdk::trace::SpanLinks::default(),
-            status: Status::Ok,
-            dropped_attributes_count: 0,
-            parent_span_is_remote: false,
-            instrumentation_scope: opentelemetry::InstrumentationScope::builder(
-                "arrow-zerobus-sdk-wrapper",
-            )
-            .with_version(env!("CARGO_PKG_VERSION"))
-            .build(),
         }
     }
 }

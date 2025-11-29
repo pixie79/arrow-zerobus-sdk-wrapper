@@ -290,17 +290,21 @@ jobs:
           source .venv/bin/activate
           maturin develop --release
       
-      - name: Install pytest
+      - name: Install pytest and dependencies
         shell: bash
         run: |
           source .venv/bin/activate
-          pip install pytest pytest-cov
+          # Install pytest with PyO3 workaround dependencies
+          pip install pytest pytest-cov pytest-forked
       
       - name: Run Python tests
         shell: bash
         run: |
           source .venv/bin/activate
-          pytest tests/python/ -v
+          # Set environment variable to work around PyO3 pytest issues
+          export PYO3_NO_PYTHON_VERSION_CHECK=1
+          # Run pytest with forked execution to prevent GIL issues
+          pytest tests/python/ -v --forked
 
   benchmarks:
     name: Performance Benchmarks

@@ -168,13 +168,28 @@ cargo tarpaulin --out Xml --output-dir coverage
 
 ### Python Tests
 
+**Note**: Python tests require the Python extension to be built first. The tests use `pytest-forked` to work around PyO3 GIL issues that can cause pytest to hang after tests.
+
 ```bash
-# Run Python tests
-pytest tests/python/
+# Recommended: Use the helper script (handles setup automatically)
+./scripts/test-python.sh
+
+# Manual setup:
+# 1. Build Python extension
+maturin develop --release
+
+# 2. Install test dependencies
+pip install pytest pytest-cov pytest-forked
+
+# 3. Run tests with PyO3 workaround
+export PYO3_NO_PYTHON_VERSION_CHECK=1
+pytest tests/python/ -v --forked
 
 # Run with coverage
-pytest --cov=arrow_zerobus_sdk_wrapper tests/python/
+pytest --cov=arrow_zerobus_sdk_wrapper tests/python/ --forked
 ```
+
+**PyO3 Pytest Workaround**: The `--forked` flag ensures each test runs in a separate process, preventing GIL (Global Interpreter Lock) deadlocks that can cause pytest to hang. The `conftest.py` file includes additional fixtures to ensure proper Python initialization and cleanup.
 
 ### Performance Benchmarks
 

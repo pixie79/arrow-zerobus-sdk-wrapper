@@ -4,7 +4,7 @@
 //! defined in specs/001-zerobus-wrapper/contracts/rust-api.md
 
 use arrow_zerobus_sdk_wrapper::{
-    WrapperConfiguration, ZerobusWrapper, ZerobusError, TransmissionResult, OtlpConfig,
+    WrapperConfiguration, ZerobusWrapper, ZerobusError, TransmissionResult, OtlpSdkConfig,
 };
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -169,9 +169,13 @@ async fn test_wrapper_lifecycle_contract() {
 /// Test that observability configuration works per contract
 #[test]
 fn test_observability_contract() {
-    let otlp_config = OtlpConfig {
+    use std::path::PathBuf;
+    
+    let otlp_config = OtlpSdkConfig {
         endpoint: Some("http://localhost:4317".to_string()),
-        extra: std::collections::HashMap::new(),
+        output_dir: Some(PathBuf::from("/tmp/otlp")),
+        write_interval_secs: 5,
+        log_level: "info".to_string(),
     };
 
     let config = WrapperConfiguration::new(
