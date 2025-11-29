@@ -199,12 +199,17 @@ impl PyWrapperConfiguration {
                         .and_then(|v| v.extract::<String>().ok())
                         .unwrap_or_else(|| "info".to_string());
 
-                    Ok::<OtlpSdkConfig, PyErr>(OtlpSdkConfig {
+                    let otlp_config = OtlpSdkConfig {
                         endpoint,
                         output_dir,
                         write_interval_secs,
                         log_level,
-                    })
+                    };
+                    // Validate configuration before using it
+                    otlp_config.validate().map_err(|e| {
+                        PyException::new_err(format!("Invalid OTLP SDK configuration: {}", e))
+                    })?;
+                    Ok::<OtlpSdkConfig, PyErr>(otlp_config)
                 })?
             } else {
                 OtlpSdkConfig::default()

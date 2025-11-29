@@ -1,6 +1,6 @@
 //! Unit tests for configuration types
 
-use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, OtlpConfig, OtlpSdkConfig};
+use arrow_zerobus_sdk_wrapper::{WrapperConfiguration, OtlpSdkConfig};
 use std::path::PathBuf;
 
 #[test]

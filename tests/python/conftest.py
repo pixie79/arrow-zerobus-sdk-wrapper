@@ -16,7 +16,6 @@ Workarounds implemented:
 """
 
 import pytest
-import sys
 import os
 import gc
 
@@ -26,8 +25,10 @@ import gc
 os.environ.setdefault("PYO3_NO_PYTHON_VERSION_CHECK", "1")
 
 # Try to import the module early to catch import errors
+# Note: We don't actually use the import here, but importing it early
+# helps catch import errors before tests run
 try:
-    import arrow_zerobus_sdk_wrapper
+    import arrow_zerobus_sdk_wrapper  # noqa: F401
 except ImportError:
     # If module is not available, skip all tests
     pytestmark = pytest.mark.skip("arrow_zerobus_sdk_wrapper not available")
@@ -46,11 +47,13 @@ def setup_python_environment():
     # Pre-initialize Python to avoid multiple initializations
     # This helps prevent the PyO3 pytest hang issue
     try:
-        import arrow_zerobus_sdk_wrapper
+        import arrow_zerobus_sdk_wrapper  # noqa: F401
         # Force module import to initialize Python bindings early
         # This ensures Python is initialized before tests run
-        _ = arrow_zerobus_sdk_wrapper.ZerobusWrapper
+        _ = arrow_zerobus_sdk_wrapper.ZerobusWrapper  # noqa: F401
     except (ImportError, AttributeError):
+        # Module not available or doesn't have expected attributes
+        # This is expected in some test environments, so we silently continue
         pass
     
     yield

@@ -59,18 +59,23 @@ async fn test_observability_manager_creation_enabled() {
 
 #[tokio::test]
 async fn test_observability_manager_initialization_with_invalid_config() {
-    // Test that invalid config doesn't panic
+    // Test that invalid config is caught by validation
     let config = OtlpSdkConfig {
-        endpoint: Some("invalid-url".to_string()), // Invalid URL
+        endpoint: Some("invalid-url".to_string()), // Invalid URL (doesn't start with http:// or https://)
         output_dir: None,
         write_interval_secs: 5,
         log_level: "info".to_string(),
     };
 
-    // Config validation should catch this, but if it doesn't, SDK init should handle it
+    // Config validation should catch this
+    assert!(config.validate().is_err(), "Invalid URL should be caught by validation");
+
+    // Even if validation passes, SDK init should handle invalid configs gracefully
+    // Test that new_async doesn't panic with invalid config
     let manager = ObservabilityManager::new_async(Some(config)).await;
     // Manager should be None if initialization fails
     // This tests graceful error handling
+    assert!(manager.is_none(), "Manager should be None for invalid config");
 }
 
 #[tokio::test]

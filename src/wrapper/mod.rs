@@ -370,6 +370,7 @@ impl ZerobusWrapper {
             // Send bytes to Zerobus stream using ingest_record
             // Vec<u8> implements Into<RecordPayload> which converts to RecordPayload::Proto
             // ingest_record returns a Future that resolves to a Result containing another Future
+            // Note: bytes.clone() is required because ingest_record takes ownership of the data
             let ingest_future = stream.ingest_record(bytes.clone()).await.map_err(|e| {
                 ZerobusError::ConnectionError(format!("Failed to create ingest record: {}", e))
             })?;

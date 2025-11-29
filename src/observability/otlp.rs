@@ -63,6 +63,10 @@ impl ObservabilityManager {
             builder = builder.write_interval_secs(_config.write_interval_secs);
 
             // Configure tracing log level
+            // Note: Setting RUST_LOG affects the entire process and may interfere with
+            // other components' logging configuration. This is intentional to ensure
+            // the observability SDK uses the configured log level. Users should be
+            // aware that initializing observability will modify global logging settings.
             let log_level = _config.log_level.to_lowercase();
             std::env::set_var(
                 "RUST_LOG",
