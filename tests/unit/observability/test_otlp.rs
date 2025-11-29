@@ -135,9 +135,15 @@ async fn test_observability_manager_flush() {
     
     if let Some(mgr) = manager {
         // Test that flush works without panicking
+        // The method should return a Result (either Ok or Err), not panic
         let result = mgr.flush().await;
-        // Flush should succeed or return an error, but not panic
-        assert!(result.is_ok() || result.is_err());
+        // Verify it's a valid Result type (this test ensures no panic occurs)
+        match result {
+            Ok(_) | Err(_) => {
+                // Expected: Result is either Ok or Err
+                // This test verifies the method completes without panicking
+            }
+        }
     }
 }
 
@@ -154,9 +160,15 @@ async fn test_observability_manager_shutdown() {
     
     if let Some(mgr) = manager {
         // Test that shutdown works without panicking
+        // The method should return a Result (either Ok or Err), not panic
         let result = mgr.shutdown().await;
-        // Shutdown should succeed or return an error, but not panic
-        assert!(result.is_ok() || result.is_err());
+        // Verify it's a valid Result type (this test ensures no panic occurs)
+        match result {
+            Ok(_) | Err(_) => {
+                // Expected: Result is either Ok or Err
+                // This test verifies the method completes without panicking
+            }
+        }
     }
 }
 

@@ -63,6 +63,17 @@ fn default_write_interval() -> u64 {
     5
 }
 
+impl Default for OtlpSdkConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: None,
+            output_dir: None,
+            write_interval_secs: 5,
+            log_level: "info".to_string(),
+        }
+    }
+}
+
 /// Complete configuration for initializing the wrapper
 ///
 /// Represents all configuration needed to initialize a ZerobusWrapper instance,
@@ -305,12 +316,12 @@ impl OtlpSdkConfig {
         }
 
         // Validate output_dir path if provided
+        // Note: PathBuf is always either absolute or relative, so we just check if it's empty
         if let Some(output_dir) = &self.output_dir {
-            if !output_dir.is_absolute() && !output_dir.is_relative() {
-                return Err(ZerobusError::ConfigurationError(format!(
-                    "output_dir must be a valid path, got: '{}'",
-                    output_dir.display()
-                )));
+            if output_dir.as_os_str().is_empty() {
+                return Err(ZerobusError::ConfigurationError(
+                    "output_dir must not be empty".to_string(),
+                ));
             }
         }
 

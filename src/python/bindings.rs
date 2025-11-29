@@ -207,12 +207,7 @@ impl PyWrapperConfiguration {
                     })
                 })?
             } else {
-                OtlpSdkConfig {
-                    endpoint: None,
-                    output_dir: None,
-                    write_interval_secs: 5,
-                    log_level: "info".to_string(),
-                }
+                OtlpSdkConfig::default()
             };
             config = config.with_observability(otlp_config);
         }
