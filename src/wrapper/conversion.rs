@@ -759,10 +759,7 @@ fn encode_arrow_value_to_protobuf(
             // Safety check: type 11 (Message) should never reach encode_arrow_value_to_protobuf
             // If it does, it means the routing logic in encode_arrow_field_to_protobuf failed
             if protobuf_type == 11 {
-                let field_name = field_desc
-                    .name
-                    .as_deref()
-                    .unwrap_or("unknown");
+                let field_name = field_desc.name.as_deref().unwrap_or("unknown");
                 let is_repeated_for_log = field_desc.label == Some(Label::Repeated as i32);
                 return Err(ZerobusError::ConversionError(format!(
                     "Protobuf type 11 (Message) reached encode_arrow_value_to_protobuf for field '{}'. \
