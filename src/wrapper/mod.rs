@@ -160,16 +160,21 @@ impl ZerobusWrapper {
 
         // Initialize debug writer if enabled
         // Info logging to diagnose why debug writer isn't being initialized
-        info!("ZerobusWrapper::new: debug_enabled={}, debug_output_dir={:?}", 
-               config.debug_enabled, 
-               config.debug_output_dir);
-        
+        info!(
+            "ZerobusWrapper::new: debug_enabled={}, debug_output_dir={:?}",
+            config.debug_enabled, config.debug_output_dir
+        );
+
         let debug_writer = if config.debug_enabled {
             if let Some(output_dir) = &config.debug_output_dir {
                 use crate::wrapper::debug::DebugWriter;
                 use std::time::Duration;
 
-                info!("Initializing debug writer with output_dir: {}, table_name: {}", output_dir.display(), config.table_name);
+                info!(
+                    "Initializing debug writer with output_dir: {}, table_name: {}",
+                    output_dir.display(),
+                    config.table_name
+                );
                 match DebugWriter::new(
                     output_dir.clone(),
                     config.table_name.clone(),
@@ -356,8 +361,9 @@ impl ZerobusWrapper {
             provided_descriptor
         } else {
             debug!("Auto-generating Protobuf descriptor from Arrow schema");
-            let generated = crate::wrapper::conversion::generate_protobuf_descriptor(batch.schema().as_ref())
-                .map_err(|e| {
+            let generated =
+                crate::wrapper::conversion::generate_protobuf_descriptor(batch.schema().as_ref())
+                    .map_err(|e| {
                     ZerobusError::ConversionError(format!(
                         "Failed to generate Protobuf descriptor: {}",
                         e
@@ -373,7 +379,10 @@ impl ZerobusWrapper {
         if let Some(ref debug_writer) = self.debug_writer {
             let mut written_guard = self.descriptor_written.lock().await;
             if !*written_guard {
-                if let Err(e) = debug_writer.write_descriptor(&self.config.table_name, &descriptor).await {
+                if let Err(e) = debug_writer
+                    .write_descriptor(&self.config.table_name, &descriptor)
+                    .await
+                {
                     warn!("Failed to write Protobuf descriptor to debug file: {}", e);
                     // Don't fail the operation if descriptor writing fails
                 } else {
@@ -396,7 +405,10 @@ impl ZerobusWrapper {
         // Flush after each batch to ensure files are immediately available for debugging
         // CRITICAL: Write protobuf files BEFORE Zerobus write attempts, so we have them even if Zerobus fails
         if let Some(ref debug_writer) = self.debug_writer {
-            info!("Writing {} protobuf messages to debug file", protobuf_bytes_list.len());
+            info!(
+                "Writing {} protobuf messages to debug file",
+                protobuf_bytes_list.len()
+            );
             let num_rows = protobuf_bytes_list.len();
             for (idx, bytes) in protobuf_bytes_list.iter().enumerate() {
                 // Flush immediately after last row in batch
@@ -405,7 +417,10 @@ impl ZerobusWrapper {
                     warn!("Failed to write Protobuf debug file: {}", e);
                     // Don't fail the operation if debug writing fails
                 } else if flush_immediately {
-                    info!("✅ Flushed protobuf debug file after batch ({} messages)", num_rows);
+                    info!(
+                        "✅ Flushed protobuf debug file after batch ({} messages)",
+                        num_rows
+                    );
                 }
             }
         } else {
@@ -432,20 +447,21 @@ impl ZerobusWrapper {
         // This prevents writes during backoff period even if stream was created before backoff started
         {
             use crate::wrapper::zerobus::check_error_6006_backoff;
-            if let Err(backoff_err) = check_error_6006_backoff(&self.config.table_name).await {
-                return Err(backoff_err);
-            }
+            check_error_6006_backoff(&self.config.table_name).await?;
         }
 
         // 6. Write each row to Zerobus with stream recreation on failure
         let mut retry_count = 0;
         const MAX_STREAM_RECREATE_ATTEMPTS: u32 = 3;
-        
+
         loop {
             // Ensure stream exists and is valid
             let mut stream_guard = self.stream.lock().await;
             if stream_guard.is_none() {
-                info!("Stream not found, creating new stream for table: {}", self.config.table_name);
+                info!(
+                    "Stream not found, creating new stream for table: {}",
+                    self.config.table_name
+                );
                 let stream = crate::wrapper::zerobus::ensure_stream(
                     sdk,
                     self.config.table_name.clone(),
@@ -457,18 +473,20 @@ impl ZerobusWrapper {
                 *stream_guard = Some(stream);
                 info!("✅ Stream created successfully");
             }
-            let stream = stream_guard.as_mut().unwrap();
+            let _stream = stream_guard.as_mut().unwrap();
             drop(stream_guard); // Release lock before sending data
 
             // Try to send all rows
             let mut all_succeeded = true;
             let mut failed_at_idx = 0;
-            
+
             for (idx, bytes) in protobuf_bytes_list.iter().enumerate() {
                 // Check backoff again before each record (in case backoff started during batch processing)
                 {
                     use crate::wrapper::zerobus::check_error_6006_backoff;
-                    if let Err(backoff_err) = check_error_6006_backoff(&self.config.table_name).await {
+                    if let Err(_backoff_err) =
+                        check_error_6006_backoff(&self.config.table_name).await
+                    {
                         // Clear stream so it gets recreated after backoff
                         let mut stream_guard = self.stream.lock().await;
                         *stream_guard = None;
@@ -478,12 +496,15 @@ impl ZerobusWrapper {
                         break;
                     }
                 }
-                
+
                 // Re-acquire stream lock for each record
                 let mut stream_guard = self.stream.lock().await;
                 if stream_guard.is_none() {
                     // Stream was cleared, recreate it
-                    info!("Stream was cleared, recreating for table: {}", self.config.table_name);
+                    info!(
+                        "Stream was cleared, recreating for table: {}",
+                        self.config.table_name
+                    );
                     let stream = crate::wrapper::zerobus::ensure_stream(
                         sdk,
                         self.config.table_name.clone(),
@@ -495,34 +516,44 @@ impl ZerobusWrapper {
                     *stream_guard = Some(stream);
                 }
                 let stream = stream_guard.as_mut().unwrap();
-                
+
                 // Send bytes to Zerobus stream using ingest_record
                 match stream.ingest_record(bytes.clone()).await {
                     Ok(ingest_future) => {
                         // Release lock before awaiting
                         drop(stream_guard);
-                        
+
                         // Await the inner future to get the final result
                         match ingest_future.await {
                             Ok(_) => {
-                                debug!("✅ Successfully sent {} bytes to Zerobus stream (row {})", bytes.len(), idx);
+                                debug!(
+                                    "✅ Successfully sent {} bytes to Zerobus stream (row {})",
+                                    bytes.len(),
+                                    idx
+                                );
                             }
                             Err(e) => {
                                 let err_msg = format!("{}", e);
                                 // Check if stream is closed
-                                if err_msg.contains("Stream is closed") || err_msg.contains("Stream closed") {
-                                    error!("❌ Stream closed while ingesting row {} (first record: {}): {}", 
-                                        idx, 
+                                if err_msg.contains("Stream is closed")
+                                    || err_msg.contains("Stream closed")
+                                {
+                                    error!("❌ Stream closed while ingesting row {} (first record: {}): {}",
+                                        idx,
                                         if idx == 0 { "YES" } else { "NO" },
                                         err_msg);
                                     if idx == 0 {
                                         error!("🔍 This is the FIRST record - stream closed immediately after creation. This suggests:");
-                                        error!("   1. Schema mismatch between descriptor and table");
+                                        error!(
+                                            "   1. Schema mismatch between descriptor and table"
+                                        );
                                         error!("   2. Validation error on first record");
                                         error!("   3. Table schema not yet propagated");
-                                        error!("   Descriptor has {} fields and {} nested types", 
-                                            descriptor.field.len(), 
-                                            descriptor.nested_type.len());
+                                        error!(
+                                            "   Descriptor has {} fields and {} nested types",
+                                            descriptor.field.len(),
+                                            descriptor.nested_type.len()
+                                        );
                                     }
                                     // Clear stream so it gets recreated on next iteration
                                     let mut stream_guard = self.stream.lock().await;
@@ -543,7 +574,8 @@ impl ZerobusWrapper {
                     Err(e) => {
                         let err_msg = format!("{}", e);
                         // Check if stream is closed
-                        if err_msg.contains("Stream is closed") || err_msg.contains("Stream closed") {
+                        if err_msg.contains("Stream is closed") || err_msg.contains("Stream closed")
+                        {
                             error!("❌ Stream closed when creating ingest record for row {} (first record: {}): {}", 
                                 idx,
                                 if idx == 0 { "YES" } else { "NO" },
@@ -553,9 +585,11 @@ impl ZerobusWrapper {
                                 error!("   1. Schema mismatch between descriptor and table");
                                 error!("   2. Validation error on first record");
                                 error!("   3. Table schema not yet propagated");
-                                error!("   Descriptor has {} fields and {} nested types", 
-                                    descriptor.field.len(), 
-                                    descriptor.nested_type.len());
+                                error!(
+                                    "   Descriptor has {} fields and {} nested types",
+                                    descriptor.field.len(),
+                                    descriptor.nested_type.len()
+                                );
                             }
                             // Clear stream so it gets recreated on next iteration
                             *stream_guard = None;
@@ -572,7 +606,7 @@ impl ZerobusWrapper {
                     }
                 }
             }
-            
+
             if all_succeeded {
                 // All rows sent successfully
                 break;
@@ -585,7 +619,10 @@ impl ZerobusWrapper {
                         MAX_STREAM_RECREATE_ATTEMPTS, failed_at_idx
                     )));
                 }
-                warn!("⚠️  Stream closed, recreating (attempt {}/{})", retry_count, MAX_STREAM_RECREATE_ATTEMPTS);
+                warn!(
+                    "⚠️  Stream closed, recreating (attempt {}/{})",
+                    retry_count, MAX_STREAM_RECREATE_ATTEMPTS
+                );
                 // Small delay before retry
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }

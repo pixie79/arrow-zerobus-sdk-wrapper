@@ -161,7 +161,8 @@ fn encode_arrow_field_to_protobuf(
                 if let Some(type_name) = &field_desc.type_name {
                     // Extract nested message name from type_name
                     let nested_descriptor = if let Some(nested_map) = nested_types {
-                        let parts: Vec<&str> = type_name.trim_start_matches('.').split('.').collect();
+                        let parts: Vec<&str> =
+                            type_name.trim_start_matches('.').split('.').collect();
                         if let Some(last_part) = parts.last() {
                             nested_map.get(*last_part)
                         } else {
@@ -192,23 +193,32 @@ fn encode_arrow_field_to_protobuf(
                                     > = nested_desc
                                         .field
                                         .iter()
-                                        .filter_map(|f| f.name.as_ref().map(|name| (name.clone(), f)))
+                                        .filter_map(|f| {
+                                            f.name.as_ref().map(|name| (name.clone(), f))
+                                        })
                                         .collect();
 
                                     // Recursively build nested types map for nested message
-                                    let nested_nested_types: std::collections::HashMap<String, &DescriptorProto> =
-                                        nested_desc
-                                            .nested_type
-                                            .iter()
-                                            .filter_map(|nt| nt.name.as_ref().map(|name| (name.clone(), nt)))
-                                            .collect();
+                                    let nested_nested_types: std::collections::HashMap<
+                                        String,
+                                        &DescriptorProto,
+                                    > = nested_desc
+                                        .nested_type
+                                        .iter()
+                                        .filter_map(|nt| {
+                                            nt.name.as_ref().map(|name| (name.clone(), nt))
+                                        })
+                                        .collect();
 
                                     // Encode each field in the nested struct
                                     for (field_idx, field) in nested_schema.iter().enumerate() {
                                         let nested_array = struct_array.column(field_idx);
 
-                                        if let Some(nested_field_desc) = nested_field_by_name.get(field.name()) {
-                                            let nested_field_number = nested_field_desc.number.unwrap_or(0);
+                                        if let Some(nested_field_desc) =
+                                            nested_field_by_name.get(field.name())
+                                        {
+                                            let nested_field_number =
+                                                nested_field_desc.number.unwrap_or(0);
 
                                             if let Err(e) = encode_arrow_field_to_protobuf(
                                                 &mut nested_buffer,
@@ -256,12 +266,18 @@ fn encode_arrow_field_to_protobuf(
                 }
             } else {
                 // Repeated primitive or other type - encode each element
-            for i in start..end {
-                if !values.is_null(i) {
-                    encode_arrow_value_to_protobuf(buffer, field_number, field_desc, values, i)?;
+                for i in start..end {
+                    if !values.is_null(i) {
+                        encode_arrow_value_to_protobuf(
+                            buffer,
+                            field_number,
+                            field_desc,
+                            values,
+                            i,
+                        )?;
+                    }
                 }
-            }
-            return Ok(());
+                return Ok(());
             }
         } else if protobuf_type == 11 {
             // Field is marked as repeated and type 11 (Message), but array is not ListArray
@@ -377,7 +393,7 @@ fn encode_arrow_field_to_protobuf(
     // 1. If descriptor says type 11 (but wasn't handled above - shouldn't happen, but safety check)
     // 2. If array is StructArray (indicates nested message structure)
     // 3. If type_name is set (indicates this is a message type)
-    
+
     // Safety check: If type is 11 but we reached here, something went wrong - handle it anyway
     if protobuf_type == 11 {
         // This is a nested message that wasn't handled above - encode it recursively
@@ -457,7 +473,7 @@ fn encode_arrow_field_to_protobuf(
             }
         }
     }
-    
+
     // Also check if array is StructArray - this indicates a nested message even if descriptor type is wrong
     if array.as_any().downcast_ref::<StructArray>().is_some() {
         // Array is StructArray but descriptor doesn't indicate nested message
@@ -483,12 +499,14 @@ fn encode_arrow_field_to_protobuf(
                     let mut nested_buffer = Vec::new();
                     let nested_schema = struct_array.fields();
 
-                    let nested_field_by_name: std::collections::HashMap<String, &FieldDescriptorProto> =
-                        nested_desc
-                            .field
-                            .iter()
-                            .filter_map(|f| f.name.as_ref().map(|name| (name.clone(), f)))
-                            .collect();
+                    let nested_field_by_name: std::collections::HashMap<
+                        String,
+                        &FieldDescriptorProto,
+                    > = nested_desc
+                        .field
+                        .iter()
+                        .filter_map(|f| f.name.as_ref().map(|name| (name.clone(), f)))
+                        .collect();
 
                     let nested_nested_types: std::collections::HashMap<String, &DescriptorProto> =
                         nested_desc
@@ -579,25 +597,37 @@ fn encode_arrow_value_to_protobuf(
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, arr.value(row_idx) as u64)?;
                 Ok(())
-            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::TimestampMicrosecondArray>() {
+            } else if let Some(arr) = array
+                .as_any()
+                .downcast_ref::<arrow::array::TimestampMicrosecondArray>()
+            {
                 // TimestampArray stores microseconds as Int64 internally
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, arr.value(row_idx) as u64)?;
                 Ok(())
-            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::TimestampMillisecondArray>() {
+            } else if let Some(arr) = array
+                .as_any()
+                .downcast_ref::<arrow::array::TimestampMillisecondArray>()
+            {
                 // TimestampArray stores milliseconds as Int64 internally, convert to microseconds
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, (arr.value(row_idx) * 1000) as u64)?; // Convert ms to μs
                 Ok(())
-            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::TimestampSecondArray>() {
+            } else if let Some(arr) = array
+                .as_any()
+                .downcast_ref::<arrow::array::TimestampSecondArray>()
+            {
                 // TimestampArray stores seconds as Int64 internally, convert to microseconds
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, (arr.value(row_idx) * 1_000_000) as u64)?; // Convert s to μs
                 Ok(())
-            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::TimestampNanosecondArray>() {
+            } else if let Some(arr) = array
+                .as_any()
+                .downcast_ref::<arrow::array::TimestampNanosecondArray>()
+            {
                 // TimestampArray stores nanoseconds as Int64 internally, convert to microseconds
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
@@ -729,7 +759,10 @@ fn encode_arrow_value_to_protobuf(
             // Safety check: type 11 (Message) should never reach encode_arrow_value_to_protobuf
             // If it does, it means the routing logic in encode_arrow_field_to_protobuf failed
             if protobuf_type == 11 {
-                let field_name = field_desc.name.as_ref().map(|s| s.as_str()).unwrap_or("unknown");
+                let field_name = field_desc
+                    .name
+                    .as_deref()
+                    .unwrap_or("unknown");
                 let is_repeated_for_log = field_desc.label == Some(Label::Repeated as i32);
                 return Err(ZerobusError::ConversionError(format!(
                     "Protobuf type 11 (Message) reached encode_arrow_value_to_protobuf for field '{}'. \
@@ -746,10 +779,10 @@ fn encode_arrow_value_to_protobuf(
                 )));
             }
             Err(ZerobusError::ConversionError(format!(
-            "Unsupported Protobuf type: {}",
-            protobuf_type
+                "Unsupported Protobuf type: {}",
+                protobuf_type
             )))
-        },
+        }
     }
 }
 
@@ -790,10 +823,14 @@ fn generate_protobuf_descriptor_internal(
 
         // Extract the inner type for lists to determine the actual field type
         let (_inner_data_type, field_type) = match field.data_type() {
-            DataType::List(inner_field) | DataType::LargeList(inner_field) => {
-                (inner_field.data_type(), arrow_type_to_protobuf_type(inner_field.data_type())?)
-            }
-            _ => (field.data_type(), arrow_type_to_protobuf_type(field.data_type())?)
+            DataType::List(inner_field) | DataType::LargeList(inner_field) => (
+                inner_field.data_type(),
+                arrow_type_to_protobuf_type(inner_field.data_type())?,
+            ),
+            _ => (
+                field.data_type(),
+                arrow_type_to_protobuf_type(field.data_type())?,
+            ),
         };
 
         // Handle nested Struct types (both direct Struct and List<Struct>)
@@ -825,16 +862,16 @@ fn generate_protobuf_descriptor_internal(
                 }
             };
 
-                let nested_message_name = format!("{}_{}", message_name, field.name());
-                let nested_type_name = format!(".{}.{}", message_name, nested_message_name);
+            let nested_message_name = format!("{}_{}", message_name, field.name());
+            let nested_type_name = format!(".{}.{}", message_name, nested_message_name);
 
-                // Recursively generate descriptor for nested struct
-                let nested_schema = arrow::datatypes::Schema::new(struct_fields.clone());
-                let nested_descriptor =
-                    generate_protobuf_descriptor_internal(&nested_schema, &nested_message_name)?;
+            // Recursively generate descriptor for nested struct
+            let nested_schema = arrow::datatypes::Schema::new(struct_fields.clone());
+            let nested_descriptor =
+                generate_protobuf_descriptor_internal(&nested_schema, &nested_message_name)?;
 
-                nested_types.push(nested_descriptor);
-                Some(nested_type_name)
+            nested_types.push(nested_descriptor);
+            Some(nested_type_name)
         } else {
             None
         };

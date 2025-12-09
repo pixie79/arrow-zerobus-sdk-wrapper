@@ -8,9 +8,9 @@ use databricks_zerobus_ingest_sdk::{
     StreamConfigurationOptions, TableProperties, ZerobusSdk, ZerobusStream,
 };
 use prost_types::DescriptorProto;
-use tracing::{debug, error, info, warn};
-use std::time::{Duration, Instant};
 use rand::Rng;
+use std::time::{Duration, Instant};
+use tracing::{debug, error, info, warn};
 
 /// Create or get Zerobus SDK instance
 ///
@@ -38,9 +38,12 @@ pub async fn create_sdk(
 
 /// Tracks error 6006 state for backoff logic (per-table)
 use std::sync::OnceLock;
-static ERROR_6006_STATE: OnceLock<std::sync::Mutex<std::collections::HashMap<String, (Instant, Instant)>>> = OnceLock::new();
+static ERROR_6006_STATE: OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (Instant, Instant)>>,
+> = OnceLock::new();
 
-fn get_error_6006_state() -> &'static std::sync::Mutex<std::collections::HashMap<String, (Instant, Instant)>> {
+fn get_error_6006_state(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, (Instant, Instant)>> {
     ERROR_6006_STATE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
@@ -87,7 +90,7 @@ pub async fn ensure_stream(
 ) -> Result<ZerobusStream, ZerobusError> {
     // Check if we're in backoff period for error 6006 (per-table)
     check_error_6006_backoff(&table_name).await?;
-    
+
     // Log descriptor info in debug mode
     let descriptor_name = descriptor_proto.name.as_deref().unwrap_or("unknown");
     let field_count = descriptor_proto.field.len();
@@ -95,7 +98,9 @@ pub async fn ensure_stream(
     info!("🔍 [DEBUG] Creating Zerobus stream for table: {} with Protobuf descriptor: name='{}', fields={}, nested_types={}", 
           table_name, descriptor_name, field_count, nested_count);
     if field_count <= 20 {
-        let field_names: Vec<&str> = descriptor_proto.field.iter()
+        let field_names: Vec<&str> = descriptor_proto
+            .field
+            .iter()
             .map(|f| f.name.as_deref().unwrap_or("?"))
             .collect();
         debug!("🔍 [DEBUG] Descriptor fields: {:?}", field_names);
@@ -112,7 +117,7 @@ pub async fn ensure_stream(
     let stream_result = sdk
         .create_stream(table_properties, client_id, client_secret, Some(options))
         .await;
-    
+
     match stream_result {
         Ok(stream) => {
             info!(
@@ -123,10 +128,12 @@ pub async fn ensure_stream(
         }
         Err(e) => {
             let error_msg = format!("{}", e);
-            
+
             // Check for error 6006 - pipeline blocked, need backoff
-            if error_msg.contains("6006") || error_msg.contains("Error Code: 6006") 
-                || error_msg.contains("Pipeline creation is temporarily blocked") {
+            if error_msg.contains("6006")
+                || error_msg.contains("Error Code: 6006")
+                || error_msg.contains("Pipeline creation is temporarily blocked")
+            {
                 // Calculate backoff with jitter (min 60 seconds)
                 let base_delay_secs = 60;
                 let jitter_range_secs = 30;
@@ -134,31 +141,38 @@ pub async fn ensure_stream(
                 let jitter = rng.gen_range(0..=jitter_range_secs);
                 let backoff_duration = Duration::from_secs(base_delay_secs + jitter);
                 let backoff_until = Instant::now() + backoff_duration;
-                
+
                 // Store backoff state per table
                 {
                     let state = get_error_6006_state();
                     let mut state_guard = state.lock().unwrap();
                     state_guard.insert(table_name.clone(), (Instant::now(), backoff_until));
                 }
-                
+
                 error!("🚫 Error 6006 detected: Data ingestion pipeline for table \"{}\" has failed multiple times recently. Pipeline creation is temporarily blocked.", table_name);
                 warn!("⏸️  Disabling writes to pipeline for {} seconds (jitter-based backoff, min 60s). Will retry after backoff period.", backoff_duration.as_secs());
                 warn!("⏸️  This is a temporary block by Databricks. The system will automatically retry after the backoff period.");
-                
+
                 return Err(ZerobusError::ConnectionError(format!(
                     "Error 6006: Pipeline temporarily blocked for table {}. Writes disabled for {} seconds (backoff period). Will automatically retry after backoff.",
                     table_name, backoff_duration.as_secs()
                 )));
             }
-            
+
             // Check if this is a schema validation error
-            if error_msg.contains("schema") || error_msg.contains("Schema") || 
-               error_msg.contains("validation") || error_msg.contains("Validation") ||
-               error_msg.contains("mismatch") || error_msg.contains("Mismatch") {
-                error!("❌ Schema validation error when creating stream for table {}: {}", table_name, error_msg);
+            if error_msg.contains("schema")
+                || error_msg.contains("Schema")
+                || error_msg.contains("validation")
+                || error_msg.contains("Validation")
+                || error_msg.contains("mismatch")
+                || error_msg.contains("Mismatch")
+            {
+                error!(
+                    "❌ Schema validation error when creating stream for table {}: {}",
+                    table_name, error_msg
+                );
             }
-            
+
             Err(ZerobusError::ConnectionError(format!(
                 "Failed to create Zerobus stream for table {}: {}",
                 table_name, e
