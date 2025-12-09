@@ -5,12 +5,14 @@
 use crate::error::ZerobusError;
 use crate::utils::file_rotation::rotate_file_if_needed;
 use arrow::record_batch::RecordBatch;
+use prost::Message;
+use prost_types::DescriptorProto;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Debug file writer
 ///
@@ -49,6 +51,7 @@ impl DebugWriter {
     /// Returns debug writer instance, or error if initialization fails.
     pub fn new(
         output_dir: PathBuf,
+        table_name: String,
         flush_interval: Duration,
         max_file_size: Option<u64>,
     ) -> Result<Self, ZerobusError> {
@@ -70,8 +73,10 @@ impl DebugWriter {
             ))
         })?;
 
-        let arrow_file_path = arrow_dir.join("table.arrow");
-        let protobuf_file_path = proto_dir.join("table.proto");
+        // Sanitize table name for filesystem (replace dots and slashes with underscores)
+        let sanitized_table_name = table_name.replace(['.', '/'], "_");
+        let arrow_file_path = arrow_dir.join(format!("{}.arrow", sanitized_table_name));
+        let protobuf_file_path = proto_dir.join(format!("{}.proto", sanitized_table_name));
 
         Ok(Self {
             output_dir,
@@ -269,11 +274,16 @@ impl DebugWriter {
     /// # Arguments
     ///
     /// * `protobuf_bytes` - Protobuf bytes to write
+    /// * `flush_immediately` - If true, flush to disk immediately after writing
     ///
     /// # Errors
     ///
     /// Returns error if file writing fails.
-    pub async fn write_protobuf(&self, protobuf_bytes: &[u8]) -> Result<(), ZerobusError> {
+    pub async fn write_protobuf(
+        &self,
+        protobuf_bytes: &[u8],
+        flush_immediately: bool,
+    ) -> Result<(), ZerobusError> {
         // Check if rotation is needed
         self.rotate_protobuf_file_if_needed().await?;
 
@@ -294,12 +304,88 @@ impl DebugWriter {
                     e
                 ))
             })?;
+
+            // Flush immediately if requested (for per-batch flushing)
+            if flush_immediately {
+                file.sync_all().map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to flush Protobuf file: {}",
+                        e
+                    ))
+                })?;
+            }
         }
 
         debug!(
-            "Wrote {} bytes to Protobuf debug file",
-            protobuf_bytes.len()
+            "Wrote {} bytes to Protobuf debug file{}",
+            protobuf_bytes.len(),
+            if flush_immediately { " (flushed)" } else { "" }
         );
+        Ok(())
+    }
+
+    /// Write Protobuf descriptor to file (once per table)
+    ///
+    /// # Arguments
+    ///
+    /// * `table_name` - Table name (used for filename)
+    /// * `descriptor` - Protobuf descriptor to write
+    ///
+    /// # Errors
+    ///
+    /// Returns error if file writing fails.
+    pub async fn write_descriptor(
+        &self,
+        table_name: &str,
+        descriptor: &DescriptorProto,
+    ) -> Result<(), ZerobusError> {
+        // Create descriptors directory
+        let descriptors_dir = self.output_dir.join("zerobus/descriptors");
+        std::fs::create_dir_all(&descriptors_dir).map_err(|e| {
+            ZerobusError::ConfigurationError(format!(
+                "Failed to create descriptors directory: {}",
+                e
+            ))
+        })?;
+
+        // Create filename from table name (sanitize for filesystem)
+        let sanitized_table_name = table_name.replace(['.', '/'], "_");
+        let descriptor_file_path = descriptors_dir.join(format!("{}.pb", sanitized_table_name));
+
+        // Check if file already exists (only write once per table)
+        if descriptor_file_path.exists() {
+            debug!(
+                "Descriptor file already exists for table {}: {}",
+                table_name,
+                descriptor_file_path.display()
+            );
+            return Ok(());
+        }
+
+        // Serialize descriptor to bytes
+        let mut descriptor_bytes = Vec::new();
+        descriptor.encode(&mut descriptor_bytes).map_err(|e| {
+            ZerobusError::ConfigurationError(format!("Failed to encode Protobuf descriptor: {}", e))
+        })?;
+
+        // Write to file
+        let mut file = std::fs::File::create(&descriptor_file_path).map_err(|e| {
+            ZerobusError::ConfigurationError(format!("Failed to create descriptor file: {}", e))
+        })?;
+
+        file.write_all(&descriptor_bytes).map_err(|e| {
+            ZerobusError::ConfigurationError(format!("Failed to write descriptor bytes: {}", e))
+        })?;
+
+        file.sync_all().map_err(|e| {
+            ZerobusError::ConfigurationError(format!("Failed to sync descriptor file: {}", e))
+        })?;
+
+        let descriptor_name = descriptor.name.as_deref().unwrap_or("unknown");
+        info!("✅ Wrote Protobuf descriptor for table '{}' to: {} (descriptor name: '{}', {} fields, {} nested types)",
+              table_name, descriptor_file_path.display(), descriptor_name,
+              descriptor.field.len(), descriptor.nested_type.len());
+
         Ok(())
     }
 
