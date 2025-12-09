@@ -40,3 +40,33 @@ pub(crate) fn encode_varint(buffer: &mut Vec<u8>, mut value: u64) -> Result<(), 
     buffer.push((value & 0x7F) as u8);
     Ok(())
 }
+
+/// Encode signed integer using zigzag encoding
+///
+/// Zigzag encoding converts signed integers to unsigned integers for efficient encoding.
+/// Formula: (n << 1) ^ (n >> 31) for 32-bit, (n << 1) ^ (n >> 63) for 64-bit
+///
+/// # Arguments
+///
+/// * `buffer` - Buffer to write encoded value to
+/// * `value` - Signed integer value to encode
+pub(crate) fn encode_sint32(buffer: &mut Vec<u8>, value: i32) -> Result<(), ZerobusError> {
+    // Zigzag encoding: (n << 1) ^ (n >> 31)
+    let zigzag = ((value << 1) ^ (value >> 31)) as u32;
+    encode_varint(buffer, zigzag as u64)
+}
+
+/// Encode signed 64-bit integer using zigzag encoding
+///
+/// Zigzag encoding converts signed integers to unsigned integers for efficient encoding.
+/// Formula: (n << 1) ^ (n >> 63)
+///
+/// # Arguments
+///
+/// * `buffer` - Buffer to write encoded value to
+/// * `value` - Signed 64-bit integer value to encode
+pub(crate) fn encode_sint64(buffer: &mut Vec<u8>, value: i64) -> Result<(), ZerobusError> {
+    // Zigzag encoding: (n << 1) ^ (n >> 63)
+    let zigzag = ((value << 1) ^ (value >> 63)) as u64;
+    encode_varint(buffer, zigzag)
+}

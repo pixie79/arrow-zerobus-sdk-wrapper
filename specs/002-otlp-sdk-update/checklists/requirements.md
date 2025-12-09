@@ -35,3 +35,4 @@
 - All requirements are testable and success criteria are measurable
 - The specification focuses on using the SDK from otlp-rust-service rather than implementation details
 
+
