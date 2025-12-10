@@ -145,13 +145,11 @@ jobs:
           cargo build --release --all-features || echo "Python build skipped"
 
   # Test jobs - depend on build
-  test-rust:
-    name: Rust Tests
-    runs-on: ${{ matrix.os }}
+  # Ubuntu Rust tests - Python tests depend on this
+  test-rust-ubuntu:
+    name: Rust Tests (Ubuntu)
+    runs-on: ubuntu-latest
     needs: build
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
     
     steps:
       - uses: actions/checkout@v4
@@ -350,7 +348,7 @@ jobs:
         shell: bash
         run: |
           source .venv/bin/activate
-          pip install pytest pytest-cov pytest-forked
+          pip install pytest pytest-cov pytest-forked pytest-asyncio
       
       - name: Run Python tests
         shell: bash
@@ -363,7 +361,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [format-lint, build, test-rust, test-python]
+    needs: [format-lint, build, test-rust-ubuntu, test-rust-other, test-python]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: write
