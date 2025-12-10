@@ -37,10 +37,10 @@ except ImportError:
 @pytest.fixture(scope="session", autouse=True)
 def setup_python_environment():
     """Session-level fixture to set up Python environment for PyO3.
-    
+
     This fixture runs once per test session and ensures Python is properly
     initialized before any tests run. It also cleans up after all tests.
-    
+
     This helps prevent the PyO3 pytest hang issue by ensuring Python
     is only initialized once per test session.
     """
@@ -48,6 +48,7 @@ def setup_python_environment():
     # This helps prevent the PyO3 pytest hang issue
     try:
         import arrow_zerobus_sdk_wrapper  # noqa: F401
+
         # Force module import to initialize Python bindings early
         # This ensures Python is initialized before tests run
         _ = arrow_zerobus_sdk_wrapper.ZerobusWrapper  # noqa: F401
@@ -55,9 +56,9 @@ def setup_python_environment():
         # Module not available or doesn't have expected attributes
         # This is expected in some test environments, so we silently continue
         pass
-    
+
     yield
-    
+
     # Cleanup after all tests
     # Force garbage collection to release any Python objects
     # This helps prevent memory leaks and GIL issues
@@ -67,7 +68,7 @@ def setup_python_environment():
 @pytest.fixture(autouse=True)
 def isolate_tests():
     """Fixture to isolate each test and prevent shared state issues.
-    
+
     This runs before and after each test to ensure proper cleanup.
     The cleanup is critical for PyO3 to prevent GIL deadlocks.
     """
@@ -88,11 +89,10 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "python: marks tests that require Python bindings"
     )
-    
+
     # If pytest-xdist is available, configure it for better isolation
-    if hasattr(config.option, 'numprocesses'):
+    if hasattr(config.option, "numprocesses"):
         # Use process-based isolation for PyO3 tests
         if config.option.numprocesses is None:
             # Default to 1 process to avoid GIL issues
             config.option.numprocesses = 1
-

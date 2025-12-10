@@ -51,10 +51,21 @@ fn get_error_6006_state(
 /// This can be called before attempting writes to prevent writes during backoff
 pub async fn check_error_6006_backoff(table_name: &str) -> Result<(), ZerobusError> {
     let state = get_error_6006_state();
-    let state_guard = state.lock().unwrap();
+    let mut state_guard = state.lock().unwrap_or_else(|poisoned| {
+        warn!(
+            "Mutex poisoned in error 6006 state, recovering: {}",
+            poisoned
+        );
+        poisoned.into_inner()
+    });
+
+    // Clean up expired entries to prevent memory leak
+    let now = Instant::now();
+    state_guard.retain(|_, (_, backoff_until)| *backoff_until > now);
+
     if let Some((_, backoff_until)) = state_guard.get(table_name) {
-        if *backoff_until > Instant::now() {
-            let remaining = backoff_until.duration_since(Instant::now());
+        if *backoff_until > now {
+            let remaining = backoff_until.duration_since(now);
             warn!("⏸️  Error 6006 backoff active for table {} - pipeline writes disabled. Remaining backoff: {:.1}s. Will retry after backoff period.", 
                   table_name, remaining.as_secs_f64());
             return Err(ZerobusError::ConnectionError(format!(
@@ -145,7 +156,16 @@ pub async fn ensure_stream(
                 // Store backoff state per table
                 {
                     let state = get_error_6006_state();
-                    let mut state_guard = state.lock().unwrap();
+                    let mut state_guard = state.lock().unwrap_or_else(|poisoned| {
+                        warn!(
+                            "Mutex poisoned in error 6006 state, recovering: {}",
+                            poisoned
+                        );
+                        poisoned.into_inner()
+                    });
+                    // Clean up expired entries before inserting new one
+                    let now = Instant::now();
+                    state_guard.retain(|_, (_, backoff_until)| *backoff_until > now);
                     state_guard.insert(table_name.clone(), (Instant::now(), backoff_until));
                 }
 

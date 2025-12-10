@@ -35,8 +35,15 @@ fn test_config_contract_builder_methods() {
     .with_unity_catalog("https://unity-catalog-url".to_string());
 
     // Contract: Builder methods should set corresponding fields
-    assert_eq!(config.client_id, Some("client_id".to_string()));
-    assert_eq!(config.client_secret, Some("client_secret".to_string()));
+    use secrecy::ExposeSecret;
+    assert_eq!(
+        config.client_id.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("client_id")
+    );
+    assert_eq!(
+        config.client_secret.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("client_secret")
+    );
     assert_eq!(
         config.unity_catalog_url,
         Some("https://unity-catalog-url".to_string())

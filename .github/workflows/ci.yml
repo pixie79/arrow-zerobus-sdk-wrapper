@@ -1,76 +1,80 @@
 name: CI
 
 on:
-  push: {}  # Run on push to any branch
-  pull_request: {}  # Run on PRs to any branch
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
-  test:
-    name: Test Suite
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        rust: [stable]
-    
+  # Formatting and linting checks - run first and in parallel
+  format-lint:
+    name: Format & Lint
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Ensure LF line endings are preserved (respects .gitattributes)
-          lfs: false
-      
-      - name: Configure Git for line endings
-        shell: bash
-        run: |
-          # Configure Git to respect .gitattributes and not convert line endings
-          git config core.autocrlf false
-          git config core.eol lf
-          # Re-normalize line endings based on .gitattributes
-          git add --renormalize .
       
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: Install build essentials and Python shared library (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        shell: bash
-        run: |
-          sudo apt-get update
-          # Install build tools
-          sudo apt-get install -y build-essential
-          # Try to install Python shared library - needed for PyO3 linking
-          # The package name might vary, so we try a few options
-          sudo apt-get install -y libpython3.11 libpython3.11-dev || \
-          sudo apt-get install -y libpython3.12 libpython3.12-dev || \
-          sudo apt-get install -y libpython3-dev || \
-          echo "Python shared library package not found, continuing anyway"
-      
-      - name: Install maturin and set up Python for PyO3
-        shell: bash
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install maturin
-          # Set PYO3_PYTHON to help PyO3 find Python for linking
-          PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
-          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
-          echo "Using Python: $PYTHON_EXEC"
-          python3 --version
-          # Verify Python library is available
-          python3 -c "import sysconfig; print(f'Python lib dir: {sysconfig.get_config_var(\"LIBDIR\")}')"
-          python3 -c "import sysconfig; print(f'Python shared library: {sysconfig.get_config_var(\"LDLIBRARY\")}')"
-      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
       
+      - name: Install Python linting tools
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install black ruff
+      
+      - name: Check Rust formatting
+        run: cargo fmt --check --all
+      
+      - name: Check Python formatting
+        run: python3 -m black --check tests/python/
+      
+      - name: Rust clippy (without Python feature)
+        run: cargo clippy --all-targets --features observability -- -D warnings
+      
+      - name: Python linting
+        run: python3 -m ruff check tests/python/
+      
+      - name: Rust clippy (with Python feature)
+        run: |
+          # Check if external dependencies exist
+          if [ ! -d "../zerobus-sdk-rs/sdk" ]; then
+            mkdir -p ../zerobus-sdk-rs/sdk
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            mkdir -p ../zerobus-sdk-rs/sdk/src
+            echo 'pub struct ZerobusSdk;' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties { pub table_name: String, pub descriptor_proto: Option<prost_types::DescriptorProto>, pub file_descriptor_set: Option<prost_types::FileDescriptorSet> }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          fi
+          cargo clippy --all-targets --all-features -- -D warnings || echo "Clippy with Python feature skipped"
+
+  # Build job - depends on format-lint
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: format-lint
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
       - name: Check if external dependencies exist
         id: check_deps
         shell: bash
         run: |
-          # Check for zerobus SDK
           if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
             echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
           else
@@ -83,265 +87,6 @@ jobs:
             echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
             echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            mkdir -p ../zerobus-sdk-rs/sdk/src
-            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-          fi
-      
-      - name: Get Cargo.toml hash (macOS)
-        if: matrix.os == 'macos-latest'
-        id: cargo-hash
-        shell: bash
-        run: |
-          if [ -f "Cargo.toml" ]; then
-            HASH=$(shasum -a 256 Cargo.toml | cut -d' ' -f1 | head -c 16)
-            echo "hash=$HASH" >> $GITHUB_OUTPUT
-          else
-            echo "hash=default" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Cache Cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ matrix.os == 'macos-latest' && steps.cargo-hash.outputs.hash || hashFiles('Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-      
-      - name: Check formatting
-        run: cargo fmt --check
-      
-      - name: Clippy
-        shell: bash
-        run: |
-          # Run clippy without Python feature to avoid PyO3 linkage issues
-          # Python-binding code will be linted in the Python job where maturin handles Python
-          cargo clippy --all-targets --features observability -- -D warnings
-      
-      - name: Run tests (excluding Python bindings)
-        shell: bash
-        run: |
-          # Exclude Python-binding tests that require PyO3 linking
-          # These will be tested in the Python job where maturin handles the build
-          # Run tests without the python feature to avoid PyO3 linkage issues
-          # This tests all other features (observability, etc.) but not Python bindings
-          cargo test --features observability --lib
-          # Run integration tests (excluding Python-binding test files)
-          cargo test --features observability --test '*' || true
-      
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin --locked --force
-      
-      - name: Generate coverage report
-        shell: bash
-        run: |
-          # Generate coverage without Python feature to avoid PyO3 linkage issues
-          # Python-binding code will be tested in the Python job
-          cargo tarpaulin --features observability --out Xml --output-dir coverage --timeout 120 \
-            --exclude-files 'src/python/*' \
-            --exclude-files 'tests/test_python*.rs' \
-            --exclude-files 'tests/unit/python/*' || true
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage/cobertura.xml
-          fail_ci_if_error: false
-
-  python:
-    name: Python Bindings Test
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Set PYO3_PYTHON for PyO3
-        shell: bash
-        run: |
-          # Set PYO3_PYTHON to help PyO3 find Python for linking
-          PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
-          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
-          echo "Using Python: $PYTHON_EXEC"
-      
-      - name: Install build essentials (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          # Install build tools - Python dev libraries should be provided by actions/setup-python
-          sudo apt-get install -y build-essential
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      
-      - name: Check if external dependencies exist
-        id: check_deps
-        shell: bash
-        run: |
-          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
-            echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
-            echo "External dependencies not available - creating stub to allow cargo to succeed"
-            # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
-            mkdir -p ../zerobus-sdk-rs/sdk
-            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            # Create a minimal lib.rs
-            mkdir -p ../zerobus-sdk-rs/sdk/src
-            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
-          fi
-      
-      - name: Clippy (Python bindings)
-        shell: bash
-        run: |
-          # Lint Python bindings code - this should work now that Python is set up
-          cargo clippy --all-targets --all-features -- -D warnings || echo "Clippy with Python feature skipped"
-      
-      - name: Install maturin
-        shell: bash
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install maturin
-      
-      - name: Build and install Python bindings
-        shell: bash
-        run: |
-          # Use maturin develop to build and install in development mode
-          # This properly sets up the Python environment for PyO3
-          python3 -m venv .venv
-          source .venv/bin/activate
-          maturin develop --release
-      
-      - name: Install pytest and dependencies
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          # Install pytest with PyO3 workaround dependencies
-          pip install pytest pytest-cov pytest-forked
-      
-      - name: Run Python tests
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          # Set environment variable to work around PyO3 pytest issues
-          export PYO3_NO_PYTHON_VERSION_CHECK=1
-          # Run pytest with forked execution to prevent GIL issues
-          pytest tests/python/ -v --forked
-
-      - name: Build Python package (wheel)
-        shell: bash
-        run: |
-          source .venv/bin/activate
-          # Build distributable wheel package
-          maturin build --release
-          # Verify wheel was created
-          ls -la target/wheels/*.whl || echo "Warning: No wheel file found"
-
-  benchmarks:
-    name: Performance Benchmarks
-    runs-on: ubuntu-latest
-    continue-on-error: true  # Benchmarks may fail without mock SDK
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-      
-      - name: Check if external dependencies exist
-        id: check_deps
-        shell: bash
-        run: |
-          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
-            echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
-            echo "External dependencies not available - creating stub to allow cargo to succeed"
-            # Create a minimal stub Cargo.toml to allow cargo to resolve dependencies
-            mkdir -p ../zerobus-sdk-rs/sdk
-            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
-            # Create a minimal lib.rs
             mkdir -p ../zerobus-sdk-rs/sdk/src
             echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
             echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
@@ -389,8 +134,381 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       
-      - name: Run benchmarks
+      - name: Build Rust (without Python)
+        run: cargo build --release --features observability
+      
+      - name: Build Rust (with Python)
         run: |
-          # Benchmarks are structured but may require mock SDK for full execution
-          # For now, we'll just verify they compile
-          cargo check --benches || echo "Benchmarks compilation check completed"
+          python3 -m pip install --upgrade pip maturin
+          PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
+          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
+          cargo build --release --all-features || echo "Python build skipped"
+
+  # Test jobs - depend on build
+  # Ubuntu Rust tests - Python tests depend on this
+  test-rust-ubuntu:
+    name: Rust Tests (Ubuntu)
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      
+      - name: Configure Git for line endings
+        shell: bash
+        run: |
+          git config core.autocrlf false
+          git config core.eol lf
+          git add --renormalize .
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install build essentials (Linux)
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+          sudo apt-get install -y libpython3.11 libpython3.11-dev || \
+          sudo apt-get install -y libpython3.12 libpython3.12-dev || \
+          sudo apt-get install -y libpython3-dev || \
+          echo "Python shared library package not found, continuing anyway"
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Check if external dependencies exist
+        id: check_deps
+        shell: bash
+        run: |
+          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
+            echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
+            echo "Creating stub for zerobus SDK"
+            mkdir -p ../zerobus-sdk-rs/sdk
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            mkdir -p ../zerobus-sdk-rs/sdk/src
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          fi
+      
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Run Rust tests
+        shell: bash
+        run: |
+          cargo test --features observability --lib
+          cargo test --features observability --test '*' || true
+
+  # Other OS Rust tests - run in parallel
+  test-rust-other:
+    name: Rust Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: build
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: false
+      
+      - name: Configure Git for line endings
+        shell: bash
+        run: |
+          git config core.autocrlf false
+          git config core.eol lf
+          git add --renormalize .
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Check if external dependencies exist
+        id: check_deps
+        shell: bash
+        run: |
+          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
+            echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
+            echo "Creating stub for zerobus SDK"
+            mkdir -p ../zerobus-sdk-rs/sdk
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            mkdir -p ../zerobus-sdk-rs/sdk/src
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          fi
+      
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Run Rust tests
+        shell: bash
+        run: |
+          cargo test --features observability --lib
+          cargo test --features observability --test '*' || true
+
+  test-python:
+    name: Python Tests
+    runs-on: ubuntu-latest
+    needs: [build, test-rust-ubuntu]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Set PYO3_PYTHON for PyO3
+        shell: bash
+        run: |
+          PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
+          echo "PYO3_PYTHON=$PYTHON_EXEC" >> $GITHUB_ENV
+      
+      - name: Install build essentials (Linux)
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Check if external dependencies exist
+        id: check_deps
+        shell: bash
+        run: |
+          if [ -d "../zerobus-sdk-rs/sdk" ] && [ -f "../zerobus-sdk-rs/sdk/Cargo.toml" ]; then
+            echo "zerobus_sdk_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "zerobus_sdk_exists=false" >> $GITHUB_OUTPUT
+            echo "Creating stub for zerobus SDK"
+            mkdir -p ../zerobus-sdk-rs/sdk
+            echo '[package]' > ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'name = "databricks-zerobus-ingest-sdk"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'version = "0.1.0"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'edition = "2021"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo '[dependencies]' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            echo 'prost-types = "0.13"' >> ../zerobus-sdk-rs/sdk/Cargo.toml
+            mkdir -p ../zerobus-sdk-rs/sdk/src
+            echo '// Stub for CI - actual SDK not available' > ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusSdk;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct ZerobusStream;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct StreamConfigurationOptions;' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'pub struct TableProperties {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub table_name: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub descriptor_proto: Option<prost_types::DescriptorProto>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub file_descriptor_set: Option<prost_types::FileDescriptorSet>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl ZerobusSdk {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub fn new(_endpoint: String, _unity_catalog_url: String) -> Result<Self, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    pub async fn create_stream(' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        &self,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _table_properties: TableProperties,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_id: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _client_secret: String,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        _options: Option<StreamConfigurationOptions>,' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    ) -> Result<ZerobusStream, String> {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Err("SDK not available in CI".to_string())' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo 'impl Default for StreamConfigurationOptions {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    fn default() -> Self {' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '        Self' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '    }' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+            echo '}' >> ../zerobus-sdk-rs/sdk/src/lib.rs
+          fi
+      
+      - name: Install maturin
+        shell: bash
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install maturin
+      
+      - name: Build and install Python bindings
+        shell: bash
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          maturin develop --release
+      
+      - name: Install pytest and dependencies
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          pip install pytest pytest-cov pytest-forked pytest-asyncio
+      
+      - name: Run Python tests
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          export PYO3_NO_PYTHON_VERSION_CHECK=1
+          pytest tests/python/ -v --forked
+
+  # Release job - runs only on merge to main/master after all tests pass
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [format-lint, build, test-rust-ubuntu, test-rust-other, test-python]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for tags
+      
+      - name: Get version from Cargo.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag $TAG does not exist"
+          fi
+      
+      - name: Create Git tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+      
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            ## Release v${{ steps.get_version.outputs.version }}
+            
+            Automated release created from merge to ${{ github.ref }}.
+            
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

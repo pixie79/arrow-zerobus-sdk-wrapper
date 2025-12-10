@@ -3,6 +3,7 @@
 //! This module defines the configuration structures and validation logic.
 
 use crate::error::ZerobusError;
+use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -86,9 +87,11 @@ pub struct WrapperConfiguration {
     /// Unity Catalog URL for authentication (required for SDK)
     pub unity_catalog_url: Option<String>,
     /// OAuth2 client ID (required for SDK)
-    pub client_id: Option<String>,
+    /// Stored securely to prevent exposure in memory dumps
+    pub client_id: Option<SecretString>,
     /// OAuth2 client secret (required for SDK)
-    pub client_secret: Option<String>,
+    /// Stored securely to prevent exposure in memory dumps
+    pub client_secret: Option<SecretString>,
     /// Target table name in Zerobus (required)
     pub table_name: String,
     /// Enable/disable OpenTelemetry observability (default: false)
@@ -154,9 +157,11 @@ impl WrapperConfiguration {
     ///
     /// * `client_id` - OAuth2 client ID
     /// * `client_secret` - OAuth2 client secret
+    ///
+    /// Credentials are stored securely using `SecretString` to prevent exposure in memory dumps.
     pub fn with_credentials(mut self, client_id: String, client_secret: String) -> Self {
-        self.client_id = Some(client_id);
-        self.client_secret = Some(client_secret);
+        self.client_id = Some(SecretString::new(client_id));
+        self.client_secret = Some(SecretString::new(client_secret));
         self
     }
 

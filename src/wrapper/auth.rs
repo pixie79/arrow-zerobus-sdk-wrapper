@@ -62,10 +62,13 @@ pub async fn refresh_token(
 
     debug!("Token endpoint: {}", token_url);
 
-    // Prepare OAuth2 client credentials request
-    let client = reqwest::Client::builder().build().map_err(|e| {
-        ZerobusError::TokenRefreshError(format!("Failed to create HTTP client: {}", e))
-    })?;
+    // Prepare OAuth2 client credentials request with timeout
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(|e| {
+            ZerobusError::TokenRefreshError(format!("Failed to create HTTP client: {}", e))
+        })?;
 
     let params = [
         ("grant_type", "client_credentials"),

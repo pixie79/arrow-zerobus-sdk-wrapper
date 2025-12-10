@@ -27,8 +27,15 @@ client_secret: test_client_secret
         config.unity_catalog_url,
         Some("https://unity-catalog-url".to_string())
     );
-    assert_eq!(config.client_id, Some("test_client_id".to_string()));
-    assert_eq!(config.client_secret, Some("test_client_secret".to_string()));
+    use secrecy::ExposeSecret;
+    assert_eq!(
+        config.client_id.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("test_client_id")
+    );
+    assert_eq!(
+        config.client_secret.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("test_client_secret")
+    );
 }
 
 #[test]
@@ -134,8 +141,15 @@ fn test_load_from_env() {
         config.unity_catalog_url,
         Some("https://unity-catalog-url".to_string())
     );
-    assert_eq!(config.client_id, Some("test_client_id".to_string()));
-    assert_eq!(config.client_secret, Some("test_client_secret".to_string()));
+    use secrecy::ExposeSecret;
+    assert_eq!(
+        config.client_id.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("test_client_id")
+    );
+    assert_eq!(
+        config.client_secret.as_ref().map(|s| s.expose_secret().as_str()),
+        Some("test_client_secret")
+    );
 
     // Cleanup
     std::env::remove_var("ZEROBUS_ENDPOINT");

@@ -15,6 +15,80 @@ use prost_types::{
 use std::sync::Arc;
 use tracing::debug;
 
+/// Maximum nesting depth for Protobuf descriptors (prevents stack overflow)
+const MAX_NESTING_DEPTH: usize = 10;
+
+/// Maximum number of fields per message (prevents memory exhaustion)
+const MAX_FIELDS_PER_MESSAGE: usize = 1000;
+
+/// Valid Protobuf field number range (1 to 536870911)
+const MIN_FIELD_NUMBER: i32 = 1;
+const MAX_FIELD_NUMBER: i32 = 536870911;
+
+/// Validate a Protobuf descriptor to prevent security issues
+///
+/// Checks for:
+/// - Maximum nesting depth
+/// - Maximum field count per message
+/// - Valid field number ranges
+///
+/// # Arguments
+///
+/// * `descriptor` - Descriptor to validate
+///
+/// # Returns
+///
+/// Returns `Ok(())` if valid, or `Err(ZerobusError)` if invalid.
+///
+/// # Errors
+///
+/// Returns `ConfigurationError` if validation fails.
+pub fn validate_protobuf_descriptor(descriptor: &DescriptorProto) -> Result<(), ZerobusError> {
+    validate_descriptor_recursive(descriptor, 0)
+}
+
+fn validate_descriptor_recursive(
+    descriptor: &DescriptorProto,
+    depth: usize,
+) -> Result<(), ZerobusError> {
+    // Check nesting depth
+    if depth > MAX_NESTING_DEPTH {
+        return Err(ZerobusError::ConfigurationError(format!(
+            "Protobuf descriptor nesting depth ({}) exceeds maximum ({})",
+            depth, MAX_NESTING_DEPTH
+        )));
+    }
+
+    // Check field count
+    if descriptor.field.len() > MAX_FIELDS_PER_MESSAGE {
+        return Err(ZerobusError::ConfigurationError(format!(
+            "Protobuf descriptor field count ({}) exceeds maximum ({})",
+            descriptor.field.len(),
+            MAX_FIELDS_PER_MESSAGE
+        )));
+    }
+
+    // Validate each field
+    for field in &descriptor.field {
+        // Validate field number
+        if let Some(field_number) = field.number {
+            if !(MIN_FIELD_NUMBER..=MAX_FIELD_NUMBER).contains(&field_number) {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "Invalid Protobuf field number: {} (must be between {} and {})",
+                    field_number, MIN_FIELD_NUMBER, MAX_FIELD_NUMBER
+                )));
+            }
+        }
+    }
+
+    // Recursively validate nested types
+    for nested_type in &descriptor.nested_type {
+        validate_descriptor_recursive(nested_type, depth + 1)?;
+    }
+
+    Ok(())
+}
+
 /// Result of converting a RecordBatch to Protobuf
 #[derive(Debug)]
 pub struct ProtobufConversionResult {
@@ -96,8 +170,9 @@ pub fn record_batch_to_protobuf_bytes(
                     descriptor,
                     Some(&nested_types_by_name),
                 ) {
+                    // Standardized error format: context, field name, row index, details
                     return Err(ZerobusError::ConversionError(format!(
-                        "Failed to encode field '{}' at row {}: {}",
+                        "Field encoding failed: field='{}', row={}, error={}",
                         field.name(),
                         row_idx,
                         e
@@ -118,6 +193,30 @@ pub fn record_batch_to_protobuf_bytes(
 ///
 /// This preserves type precision (Int64 vs Int32, Float64 vs Float32, etc.)
 /// by converting directly from Arrow types to Protobuf wire format.
+///
+/// # Algorithm Overview
+///
+/// This function implements a complex routing logic that handles multiple cases:
+///
+/// 1. **Null values**: Protobuf doesn't encode null/optional fields - they are skipped
+/// 2. **Repeated fields**: Must be checked FIRST, even for nested messages
+///    - Repeated primitives: ListArray with primitive values
+///    - Repeated nested messages: ListArray of StructArray
+/// 3. **Nested messages (type 11)**: Single nested message encoded as StructArray
+/// 4. **Primitive types**: Direct encoding based on Protobuf wire format
+///
+/// # Edge Cases Handled
+///
+/// - **Repeated nested messages**: Special handling for ListArray containing StructArray elements
+/// - **Type 11 fallback**: Safety check for nested messages that weren't caught by earlier routing
+/// - **StructArray detection**: Fallback for nested messages with incorrect descriptor type
+/// - **Type name parsing**: Extracts nested message name from Protobuf type_name format (".Parent.Nested")
+///
+/// # Performance Considerations
+///
+/// - Field descriptor maps are built once per message and passed recursively
+/// - Nested type lookups use HashMap for O(1) access
+/// - Buffer allocations are minimized by reusing buffers for nested messages
 ///
 /// # Arguments
 ///
@@ -145,8 +244,14 @@ fn encode_arrow_field_to_protobuf(
     let protobuf_type = field_desc.r#type.unwrap_or(9); // Default to String
     let is_repeated = field_desc.label == Some(Label::Repeated as i32);
 
-    // Handle repeated fields
-    // CRITICAL: Check repeated FIRST, even for nested messages (repeated nested messages are ListArray of StructArray)
+    // ========================================================================
+    // STEP 1: Handle repeated fields (must be checked FIRST)
+    // ========================================================================
+    // CRITICAL: Check repeated FIRST, even for nested messages.
+    // This is because repeated nested messages are represented as ListArray of StructArray,
+    // and we need to handle the list structure before the nested message structure.
+    //
+    // Performance: This early return avoids unnecessary type checks for repeated fields.
     if is_repeated {
         if let Some(list_array) = array.as_any().downcast_ref::<ListArray>() {
             let offsets = list_array.value_offsets();
@@ -154,10 +259,19 @@ fn encode_arrow_field_to_protobuf(
             let end = offsets[row_idx + 1] as usize;
             let values = list_array.values();
 
-            // For repeated nested messages (type 11), each element in the list is a StructArray
+            // ========================================================================
+            // STEP 1a: Handle repeated nested messages (type 11 = Message)
+            // ========================================================================
+            // For repeated nested messages, the Arrow structure is:
+            // - ListArray containing multiple StructArray elements
+            // - Each StructArray element represents one nested message instance
+            // - We need to encode each element as a separate nested message
+            //
+            // Edge case: The type_name format is ".ParentMessage.NestedMessage"
+            // We extract the last part to find the nested descriptor in the map.
             if protobuf_type == 11 {
                 // Repeated nested message - encode each StructArray element as a nested message
-                // Find the nested type descriptor
+                // Find the nested type descriptor by parsing type_name
                 if let Some(type_name) = &field_desc.type_name {
                     // Extract nested message name from type_name
                     let nested_descriptor = if let Some(nested_map) = nested_types {
@@ -229,10 +343,11 @@ fn encode_arrow_field_to_protobuf(
                                                 nested_desc,
                                                 Some(&nested_nested_types),
                                             ) {
+                                                // Standardized error format: context, field, element index, details
                                                 return Err(ZerobusError::ConversionError(format!(
-                                                    "Failed to encode element {} of repeated nested message '{}': {}",
-                                                    i,
+                                                    "Repeated nested message encoding failed: field='{}', element={}, error={}",
                                                     field_desc.name.as_ref().unwrap_or(&"unknown".to_string()),
+                                                    i,
                                                     e
                                                 )));
                                             }
@@ -246,21 +361,24 @@ fn encode_arrow_field_to_protobuf(
                             }
                             return Ok(());
                         } else {
+                            // Standardized error format: context, field, issue
                             return Err(ZerobusError::ConversionError(format!(
-                                "Repeated nested message '{}' values array is not a StructArray",
+                                "Invalid array type: field='{}', expected='StructArray', found='ListArray'",
                                 field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
                             )));
                         }
                     } else {
+                        // Standardized error format: context, field, type_name, issue
                         return Err(ZerobusError::ConversionError(format!(
-                            "Nested type descriptor not found for repeated nested message field '{}' with type_name '{}'",
+                            "Nested type not found: field='{}', type_name='{}', issue='descriptor_missing'",
                             field_desc.name.as_ref().unwrap_or(&"unknown".to_string()),
                             type_name
                         )));
                     }
                 } else {
+                    // Standardized error format: context, field, issue
                     return Err(ZerobusError::ConversionError(format!(
-                        "Repeated nested message field '{}' missing type_name",
+                        "Missing type_name: field='{}', issue='required_for_nested_message'",
                         field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
                     )));
                 }
@@ -287,9 +405,18 @@ fn encode_arrow_field_to_protobuf(
         }
     }
 
-    // Handle single nested messages (type 11 = Message)
+    // ========================================================================
+    // STEP 2: Handle single nested messages (type 11 = Message)
+    // ========================================================================
+    // Single nested messages are represented as StructArray in Arrow.
+    // We encode them as length-delimited Protobuf messages (wire type 2).
+    //
+    // Edge case: The type_name format is ".ParentMessage.NestedMessage"
+    // We extract the last part after splitting by "." to find the nested descriptor.
+    //
+    // Performance: We build field maps once per nested message to avoid repeated lookups.
     if protobuf_type == 11 {
-        // Find the nested type descriptor
+        // Find the nested type descriptor by parsing type_name
         if let Some(type_name) = &field_desc.type_name {
             // Extract nested message name from type_name (format: ".ParentMessage.NestedMessage")
             // We need to find the nested descriptor
@@ -352,8 +479,9 @@ fn encode_arrow_field_to_protobuf(
                                 nested_desc,
                                 Some(&nested_nested_types),
                             ) {
+                                // Standardized error format: context, field, row, details
                                 return Err(ZerobusError::ConversionError(format!(
-                                    "Failed to encode nested field '{}' at row {}: {}",
+                                    "Nested field encoding failed: field='{}', row={}, error={}",
                                     field.name(),
                                     row_idx,
                                     e
@@ -367,34 +495,39 @@ fn encode_arrow_field_to_protobuf(
                     buffer.extend_from_slice(&nested_buffer);
                     return Ok(());
                 } else {
+                    // Standardized error format: context, field, expected, issue
                     return Err(ZerobusError::ConversionError(format!(
-                        "Expected StructArray for nested message field '{}'",
+                        "Invalid array type: field='{}', expected='StructArray', issue='nested_message_required'",
                         field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
                     )));
                 }
             } else {
+                // Standardized error format: context, field, type_name, issue
                 return Err(ZerobusError::ConversionError(format!(
-                    "Nested type descriptor not found for field '{}' with type_name '{}'",
+                    "Nested type not found: field='{}', type_name='{}', issue='descriptor_missing'",
                     field_desc.name.as_ref().unwrap_or(&"unknown".to_string()),
                     type_name
                 )));
             }
         } else {
+            // Standardized error format: context, field, issue
             return Err(ZerobusError::ConversionError(format!(
-                "Nested message field '{}' missing type_name",
+                "Missing type_name: field='{}', issue='required_for_nested_message'",
                 field_desc.name.as_ref().unwrap_or(&"unknown".to_string())
             )));
         }
     }
 
-    // CRITICAL: Before falling through to encode_arrow_value_to_protobuf, check if this is actually a nested message
-    // This handles cases where type 11 fields might not have been caught by the earlier checks
-    // We dynamically detect nested messages by checking:
-    // 1. If descriptor says type 11 (but wasn't handled above - shouldn't happen, but safety check)
-    // 2. If array is StructArray (indicates nested message structure)
-    // 3. If type_name is set (indicates this is a message type)
-
-    // Safety check: If type is 11 but we reached here, something went wrong - handle it anyway
+    // ========================================================================
+    // STEP 3: Safety check for type 11 that wasn't handled above
+    // ========================================================================
+    // This is a defensive check for edge cases where:
+    // 1. Descriptor says type 11 but wasn't caught by earlier routing (shouldn't happen)
+    // 2. Array is StructArray but descriptor type is incorrect
+    // 3. Type name is set but routing logic missed it
+    //
+    // This ensures we don't fall through to primitive encoding for nested messages.
+    // Performance: This check is only reached for edge cases, so impact is minimal.
     if protobuf_type == 11 {
         // This is a nested message that wasn't handled above - encode it recursively
         // Find the nested type descriptor
@@ -455,8 +588,9 @@ fn encode_arrow_field_to_protobuf(
                                 nested_desc,
                                 Some(&nested_nested_types),
                             ) {
+                                // Standardized error format: context, field, row, details
                                 return Err(ZerobusError::ConversionError(format!(
-                                    "Failed to encode nested field '{}' at row {}: {}",
+                                    "Nested field encoding failed: field='{}', row={}, error={}",
                                     field.name(),
                                     row_idx,
                                     e
@@ -474,7 +608,15 @@ fn encode_arrow_field_to_protobuf(
         }
     }
 
-    // Also check if array is StructArray - this indicates a nested message even if descriptor type is wrong
+    // ========================================================================
+    // STEP 4: Fallback for StructArray with incorrect descriptor type
+    // ========================================================================
+    // Edge case: If the Arrow array is StructArray but the descriptor doesn't indicate
+    // a nested message (type != 11), we still try to encode it as a nested message.
+    // This handles cases where the descriptor generation was incorrect but the data
+    // structure is correct.
+    //
+    // Performance: This is a fallback path, only used when descriptor is incorrect.
     if array.as_any().downcast_ref::<StructArray>().is_some() {
         // Array is StructArray but descriptor doesn't indicate nested message
         // This might be a nested message with incorrect descriptor - try to encode it
@@ -530,8 +672,9 @@ fn encode_arrow_field_to_protobuf(
                                 nested_desc,
                                 Some(&nested_nested_types),
                             ) {
+                                // Standardized error format: context, field, row, details
                                 return Err(ZerobusError::ConversionError(format!(
-                                    "Failed to encode nested field '{}' at row {}: {}",
+                                    "Nested field encoding failed: field='{}', row={}, error={}",
                                     field.name(),
                                     row_idx,
                                     e

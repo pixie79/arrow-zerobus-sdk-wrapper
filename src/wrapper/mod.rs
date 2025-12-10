@@ -15,6 +15,7 @@ use crate::error::ZerobusError;
 use crate::observability::ObservabilityManager;
 use crate::wrapper::retry::RetryConfig;
 use arrow::record_batch::RecordBatch;
+use secrecy::ExposeSecret;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
@@ -99,21 +100,14 @@ impl ZerobusWrapper {
             })?
             .clone();
 
-        let _client_id = config
-            .client_id
-            .as_ref()
-            .ok_or_else(|| {
-                ZerobusError::ConfigurationError("client_id is required for SDK".to_string())
-            })?
-            .clone();
+        // Validate credentials are present (but don't expose them unnecessarily)
+        let _client_id = config.client_id.as_ref().ok_or_else(|| {
+            ZerobusError::ConfigurationError("client_id is required for SDK".to_string())
+        })?;
 
-        let _client_secret = config
-            .client_secret
-            .as_ref()
-            .ok_or_else(|| {
-                ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
-            })?
-            .clone();
+        let _client_secret = config.client_secret.as_ref().ok_or_else(|| {
+            ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
+        })?;
 
         // Normalize and validate zerobus endpoint
         let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
@@ -351,10 +345,19 @@ impl ZerobusWrapper {
 
         // Get SDK reference (lock is released, so we can lock again for stream creation)
         let sdk_guard = self.sdk.lock().await;
-        let sdk = sdk_guard.as_ref().unwrap();
+        let sdk = sdk_guard.as_ref().ok_or_else(|| {
+            ZerobusError::ConfigurationError(
+                "SDK not initialized - this should not happen".to_string(),
+            )
+        })?;
 
         // 2. Get Protobuf descriptor (use provided one or generate from Arrow schema)
         let descriptor = if let Some(provided_descriptor) = descriptor {
+            // Validate user-provided descriptor to prevent security issues
+            crate::wrapper::conversion::validate_protobuf_descriptor(&provided_descriptor)
+                .map_err(|e| {
+                    ZerobusError::ConfigurationError(format!("Invalid Protobuf descriptor: {}", e))
+                })?;
             let descriptor_name = provided_descriptor.name.as_deref().unwrap_or("unknown");
             info!("🔍 [DEBUG] Using provided Protobuf descriptor: name='{}', fields={}, nested_types={}", 
                   descriptor_name, provided_descriptor.field.len(), provided_descriptor.nested_type.len());
@@ -369,6 +372,13 @@ impl ZerobusWrapper {
                         e
                     ))
                 })?;
+            // Validate generated descriptor (should always pass, but safety check)
+            crate::wrapper::conversion::validate_protobuf_descriptor(&generated).map_err(|e| {
+                ZerobusError::ConversionError(format!(
+                    "Generated Protobuf descriptor failed validation: {}",
+                    e
+                ))
+            })?;
             let descriptor_name = generated.name.as_deref().unwrap_or("unknown");
             info!("🔍 [DEBUG] Auto-generated Protobuf descriptor: name='{}', fields={}, nested_types={}", 
                   descriptor_name, generated.field.len(), generated.nested_type.len());
@@ -428,11 +438,13 @@ impl ZerobusWrapper {
         }
 
         // 4. Ensure stream is created
+        // Expose secrets only when needed for API calls
         let client_id = self
             .config
             .client_id
             .as_ref()
             .ok_or_else(|| ZerobusError::ConfigurationError("client_id is required".to_string()))?
+            .expose_secret()
             .clone();
         let client_secret = self
             .config
@@ -441,16 +453,57 @@ impl ZerobusWrapper {
             .ok_or_else(|| {
                 ZerobusError::ConfigurationError("client_secret is required".to_string())
             })?
+            .expose_secret()
             .clone();
 
-        // 5. Check backoff BEFORE attempting any writes (even if stream exists)
-        // This prevents writes during backoff period even if stream was created before backoff started
+        // ========================================================================
+        // STEP 5: Check error 6006 backoff BEFORE attempting any writes
+        // ========================================================================
+        // CRITICAL: Check backoff BEFORE attempting writes, even if stream exists.
+        // This prevents writes during backoff period even if stream was created before
+        // backoff started. Error 6006 indicates pipeline is temporarily blocked by
+        // Databricks due to repeated failures.
+        //
+        // Edge case: Backoff can start during batch processing, so we check again
+        // before each record in the loop below.
         {
             use crate::wrapper::zerobus::check_error_6006_backoff;
             check_error_6006_backoff(&self.config.table_name).await?;
         }
 
-        // 6. Write each row to Zerobus with stream recreation on failure
+        // ========================================================================
+        // STEP 6: Write each row to Zerobus with stream recreation on failure
+        // ========================================================================
+        // This implements a retry loop that handles stream closure and recreation.
+        //
+        // Algorithm:
+        // 1. Ensure stream exists (create if None)
+        // 2. For each row in the batch:
+        //    a. Check backoff again (backoff can start during batch processing)
+        //    b. Re-acquire stream lock (stream may have been cleared)
+        //    c. Recreate stream if it was cleared
+        //    d. Send row to Zerobus
+        //    e. Handle stream closure errors by clearing stream and retrying
+        // 3. If all rows succeed, break
+        // 4. If stream closed, retry up to MAX_STREAM_RECREATE_ATTEMPTS
+        //
+        // Edge cases handled:
+        // - Stream closed immediately after creation (first record fails)
+        //   → Indicates schema mismatch or validation error
+        // - Stream closed mid-batch
+        //   → Clear stream, recreate, and retry from failed row
+        // - Backoff starts during batch processing
+        //   → Clear stream, break loop, return error
+        //
+        // Performance considerations:
+        // - Lock is released before async operations to avoid blocking
+        // - Stream is only recreated when necessary (not for every row)
+        // - Maximum retry attempts prevent infinite loops
+        //
+        // Thread safety:
+        // - Uses async Mutex to prevent blocking the runtime
+        // - Lock is held only when accessing/modifying stream
+        // - Lock is released before network I/O operations
         let mut retry_count = 0;
         const MAX_STREAM_RECREATE_ATTEMPTS: u32 = 3;
 
@@ -473,7 +526,12 @@ impl ZerobusWrapper {
                 *stream_guard = Some(stream);
                 info!("✅ Stream created successfully");
             }
-            let _stream = stream_guard.as_mut().unwrap();
+            // Verify stream exists before dropping lock
+            if stream_guard.is_none() {
+                return Err(ZerobusError::ConnectionError(
+                    "Stream was None after creation - this should not happen".to_string(),
+                ));
+            }
             drop(stream_guard); // Release lock before sending data
 
             // Try to send all rows
@@ -481,13 +539,18 @@ impl ZerobusWrapper {
             let mut failed_at_idx = 0;
 
             for (idx, bytes) in protobuf_bytes_list.iter().enumerate() {
-                // Check backoff again before each record (in case backoff started during batch processing)
+                // ========================================================================
+                // STEP 6a: Check backoff before each record
+                // ========================================================================
+                // Edge case: Backoff can start during batch processing (e.g., another thread
+                // encountered error 6006). We check before each record to prevent writes
+                // during backoff period.
                 {
                     use crate::wrapper::zerobus::check_error_6006_backoff;
                     if let Err(_backoff_err) =
                         check_error_6006_backoff(&self.config.table_name).await
                     {
-                        // Clear stream so it gets recreated after backoff
+                        // Clear stream so it gets recreated after backoff period expires
                         let mut stream_guard = self.stream.lock().await;
                         *stream_guard = None;
                         drop(stream_guard);
@@ -497,10 +560,18 @@ impl ZerobusWrapper {
                     }
                 }
 
-                // Re-acquire stream lock for each record
+                // ========================================================================
+                // STEP 6b: Re-acquire stream lock and ensure stream exists
+                // ========================================================================
+                // We re-acquire the lock for each record because:
+                // 1. Stream may have been cleared by error handling in previous iteration
+                // 2. Lock was released before async operations to avoid blocking
+                // 3. Multiple threads may be sending batches concurrently
+                //
+                // Performance: Lock is held only briefly, released before network I/O.
                 let mut stream_guard = self.stream.lock().await;
                 if stream_guard.is_none() {
-                    // Stream was cleared, recreate it
+                    // Stream was cleared (e.g., by error handling), recreate it
                     info!(
                         "Stream was cleared, recreating for table: {}",
                         self.config.table_name
@@ -515,12 +586,25 @@ impl ZerobusWrapper {
                     .await?;
                     *stream_guard = Some(stream);
                 }
-                let stream = stream_guard.as_mut().unwrap();
+                let stream = stream_guard.as_mut().ok_or_else(|| {
+                    ZerobusError::ConnectionError(
+                        "Stream was None after recreation - this should not happen".to_string(),
+                    )
+                })?;
 
-                // Send bytes to Zerobus stream using ingest_record
+                // ========================================================================
+                // STEP 6c: Send bytes to Zerobus stream
+                // ========================================================================
+                // The Zerobus SDK's ingest_record returns a Future that must be awaited.
+                // We release the lock before awaiting to avoid blocking other operations.
+                //
+                // Error handling:
+                // - Stream closed errors: Clear stream, mark failure, break loop to retry
+                // - Other errors: Return immediately (non-retryable)
+                // - First record failures: Log detailed diagnostics for schema issues
                 match stream.ingest_record(bytes.clone()).await {
                     Ok(ingest_future) => {
-                        // Release lock before awaiting
+                        // Release lock before awaiting to avoid blocking other operations
                         drop(stream_guard);
 
                         // Await the inner future to get the final result
@@ -534,23 +618,25 @@ impl ZerobusWrapper {
                             }
                             Err(e) => {
                                 let err_msg = format!("{}", e);
-                                // Check if stream is closed
+                                // Check if stream is closed (indicates server-side closure)
                                 if err_msg.contains("Stream is closed")
                                     || err_msg.contains("Stream closed")
                                 {
-                                    error!("❌ Stream closed while ingesting row {} (first record: {}): {}",
-                                        idx,
-                                        if idx == 0 { "YES" } else { "NO" },
-                                        err_msg);
-                                    if idx == 0 {
-                                        error!("🔍 This is the FIRST record - stream closed immediately after creation. This suggests:");
+                                    // Standardized error logging with context
+                                    let is_first = idx == 0;
+                                    error!(
+                                        "Stream closed: row={}, first_record={}, error={}",
+                                        idx, is_first, err_msg
+                                    );
+                                    if is_first {
+                                        // First record failure indicates schema/validation issues
+                                        error!("Diagnostics: This is the FIRST record - stream closed immediately after creation");
+                                        error!("Possible causes:");
+                                        error!("  1. Schema mismatch between descriptor and table");
+                                        error!("  2. Validation error on first record");
+                                        error!("  3. Table schema not yet propagated");
                                         error!(
-                                            "   1. Schema mismatch between descriptor and table"
-                                        );
-                                        error!("   2. Validation error on first record");
-                                        error!("   3. Table schema not yet propagated");
-                                        error!(
-                                            "   Descriptor has {} fields and {} nested types",
+                                            "Descriptor info: fields={}, nested_types={}",
                                             descriptor.field.len(),
                                             descriptor.nested_type.len()
                                         );
@@ -563,8 +649,9 @@ impl ZerobusWrapper {
                                     failed_at_idx = idx;
                                     break;
                                 } else {
+                                    // Non-stream-closure errors are returned immediately
                                     return Err(ZerobusError::ConnectionError(format!(
-                                        "Failed to ingest record {} to Zerobus stream: {}",
+                                        "Record ingestion failed: row={}, error={}",
                                         idx, e
                                     )));
                                 }
@@ -573,20 +660,24 @@ impl ZerobusWrapper {
                     }
                     Err(e) => {
                         let err_msg = format!("{}", e);
-                        // Check if stream is closed
+                        // Check if stream is closed (indicates server-side closure)
                         if err_msg.contains("Stream is closed") || err_msg.contains("Stream closed")
                         {
-                            error!("❌ Stream closed when creating ingest record for row {} (first record: {}): {}", 
-                                idx,
-                                if idx == 0 { "YES" } else { "NO" },
-                                err_msg);
-                            if idx == 0 {
-                                error!("🔍 This is the FIRST record - stream closed immediately. This suggests:");
-                                error!("   1. Schema mismatch between descriptor and table");
-                                error!("   2. Validation error on first record");
-                                error!("   3. Table schema not yet propagated");
+                            // Standardized error logging with context
+                            let is_first = idx == 0;
+                            error!(
+                                "Stream closed: row={}, first_record={}, error={}",
+                                idx, is_first, err_msg
+                            );
+                            if is_first {
+                                // First record failure indicates schema/validation issues
+                                error!("Diagnostics: This is the FIRST record - stream closed immediately");
+                                error!("Possible causes:");
+                                error!("  1. Schema mismatch between descriptor and table");
+                                error!("  2. Validation error on first record");
+                                error!("  3. Table schema not yet propagated");
                                 error!(
-                                    "   Descriptor has {} fields and {} nested types",
+                                    "Descriptor info: fields={}, nested_types={}",
                                     descriptor.field.len(),
                                     descriptor.nested_type.len()
                                 );
@@ -598,8 +689,9 @@ impl ZerobusWrapper {
                             failed_at_idx = idx;
                             break;
                         } else {
+                            // Non-stream-closure errors are returned immediately
                             return Err(ZerobusError::ConnectionError(format!(
-                                "Failed to create ingest record for row {}: {}",
+                                "Record creation failed: row={}, error={}",
                                 idx, e
                             )));
                         }
@@ -607,23 +699,36 @@ impl ZerobusWrapper {
                 }
             }
 
+            // ========================================================================
+            // STEP 6d: Handle retry logic
+            // ========================================================================
+            // If all rows succeeded, we're done. Otherwise, retry with stream recreation.
+            // The retry mechanism handles transient stream closure issues.
+            //
+            // Edge case: If stream closes repeatedly, it may indicate:
+            // - Schema mismatch (descriptor doesn't match table schema)
+            // - Server-side validation errors
+            // - Network issues causing stream closure
+            //
+            // Performance: Small delay (100ms) prevents tight retry loops.
             if all_succeeded {
-                // All rows sent successfully
+                // All rows sent successfully - exit retry loop
                 break;
             } else {
-                // Some rows failed due to stream closure, retry
+                // Some rows failed due to stream closure - retry with stream recreation
                 retry_count += 1;
                 if retry_count > MAX_STREAM_RECREATE_ATTEMPTS {
+                    // Exhausted retry attempts - return error with context
                     return Err(ZerobusError::ConnectionError(format!(
-                        "Stream closed after {} recreation attempts. Failed at row {}. This may indicate a schema mismatch or server-side issue.",
+                        "Stream recreation exhausted: attempts={}, failed_at_row={}, possible_causes='schema_mismatch,validation_error,server_issue'",
                         MAX_STREAM_RECREATE_ATTEMPTS, failed_at_idx
                     )));
                 }
                 warn!(
-                    "⚠️  Stream closed, recreating (attempt {}/{})",
-                    retry_count, MAX_STREAM_RECREATE_ATTEMPTS
+                    "Stream recreation retry: attempt={}/{}, failed_at_row={}",
+                    retry_count, MAX_STREAM_RECREATE_ATTEMPTS, failed_at_idx
                 );
-                // Small delay before retry
+                // Small delay before retry to avoid tight retry loops
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             }
         }
@@ -695,6 +800,12 @@ impl Clone for ZerobusWrapper {
     }
 }
 
-// Ensure Send + Sync for thread-safety
-unsafe impl Send for ZerobusWrapper {}
-unsafe impl Sync for ZerobusWrapper {}
+// ZerobusWrapper is automatically Send + Sync because all its fields are Send + Sync:
+// - Arc<WrapperConfiguration>: Send + Sync (Arc is Send + Sync, WrapperConfiguration is Send + Sync)
+// - Arc<Mutex<Option<ZerobusSdk>>>: Send + Sync (Arc and Mutex are Send + Sync)
+// - Arc<Mutex<Option<ZerobusStream>>>: Send + Sync
+// - RetryConfig: Send + Sync (contains only primitive types)
+// - Option<ObservabilityManager>: Send + Sync (ObservabilityManager is Send + Sync)
+// - Option<Arc<DebugWriter>>: Send + Sync
+// - Arc<Mutex<bool>>: Send + Sync
+// The compiler automatically derives Send + Sync for this struct, so explicit unsafe impl is not needed.
