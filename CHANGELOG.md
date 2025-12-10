@@ -9,27 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [0.3.0] - 2025-12-09
+## [0.4.0] - 2025-12-10
 
 ### Added
-- Performance benchmarks with mock SDK integration
-- Cross-platform testing (Linux, macOS, Windows)
-- Security review and hardening
-- cap-gl-consumer-rust compatibility testing
+- **feat**: Python error class constructors - all error types can now be instantiated from Python with messages
+- **feat**: Configuration attribute getters - `WrapperConfiguration` now exposes all fields as Python properties
+- **feat**: Comprehensive formatting and linting checks for both Rust and Python
+- **feat**: Enhanced GitHub Actions CI workflow with sequential job execution
+- **feat**: Automated release tag creation on merge to main/master
+- **feat**: Python formatting support with `black`
+- **feat**: Python linting support with `ruff`
+- **docs**: Updated CI workflow documentation
 
 ### Changed
-- Code cleanup and refactoring (ongoing)
-- **docs**: Amended constitution to v1.1.0 - Added Principle VI: Commit Workflow Standards
-  - Requires CHANGELOG.md updates, cargo fmt, cargo clippy, and tests passing before commits
-  - Requires all commits to be GPG signed
-  - Updated Quality Gates to enforce commit workflow requirements
+- **chore**: Reorganized GitHub Actions workflow to run formatting/linting → build → tests → release in order
+- **chore**: Updated CI to check formatting and linting for all languages before running tests
+- **chore**: Improved Python bindings error handling and exception construction
+- **chore**: Standardized code formatting across Rust and Python codebases
+- **chore**: Removed completed planning documents (PYTHON_BINDINGS_FIX_PLAN.md, TODO.md, TEST_PLAN.md)
 
 ### Fixed
-- **fix**: Updated conversion logic for nested rows to properly handle complex nested message structures
-- **fix**: Improved Arrow to Protobuf conversion for nested data types
-- **fix**: Enhanced debug output for nested message fields
-- **fix**: Updated protobuf serialization handling for nested structures
-- **fix**: Fixed CI cargo-tarpaulin installation error by adding --force flag to allow overwriting existing installation
+- **fix**: Python error classes now support direct instantiation (e.g., `ConfigurationError("message")`)
+- **fix**: `WrapperConfiguration` attributes are now accessible from Python (e.g., `config.endpoint`, `config.table_name`)
+- **fix**: Rust clippy warnings (redundant closures, unused code annotations)
+- **fix**: Python linting issues (unused imports, unused variables)
+- **fix**: Rust formatting issues in Python bindings
+- **fix**: Python formatting issues in test files
 
 ---
 
@@ -210,6 +215,7 @@ let config = OtlpSdkConfig {
 
 ---
 
+[0.4.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.4.0
 [0.3.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.3.0
 [0.2.0]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.2.0
 [0.1.1]: https://github.com/pixie79/arrow-zerobus-sdk-wrapper/releases/tag/v0.1.1

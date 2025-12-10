@@ -58,3 +58,6 @@ tarpaulin-report.html
 doc/
 target/doc/
 
+# Test results directory
+testResults/
+

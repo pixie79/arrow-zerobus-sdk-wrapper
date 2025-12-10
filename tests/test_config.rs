@@ -28,8 +28,21 @@ fn test_config_with_credentials() {
     )
     .with_credentials("client_id".to_string(), "client_secret".to_string());
 
-    assert_eq!(config.client_id, Some("client_id".to_string()));
-    assert_eq!(config.client_secret, Some("client_secret".to_string()));
+    use secrecy::ExposeSecret;
+    assert_eq!(
+        config
+            .client_id
+            .as_ref()
+            .map(|s| s.expose_secret().as_str()),
+        Some("client_id")
+    );
+    assert_eq!(
+        config
+            .client_secret
+            .as_ref()
+            .map(|s| s.expose_secret().as_str()),
+        Some("client_secret")
+    );
 }
 
 #[test]

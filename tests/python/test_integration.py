@@ -6,11 +6,10 @@ Requires PyArrow to be installed.
 
 import pytest
 import pyarrow as pa
-import asyncio
 
 # Skip all tests if the module is not available
 try:
-    import arrow_zerobus_sdk_wrapper
+    import arrow_zerobus_sdk_wrapper  # noqa: F401
 except ImportError:
     pytestmark = pytest.mark.skip("arrow_zerobus_sdk_wrapper not available")
 
@@ -18,6 +17,7 @@ except ImportError:
 def test_import_module():
     """Test that the module can be imported."""
     import arrow_zerobus_sdk_wrapper
+
     assert hasattr(arrow_zerobus_sdk_wrapper, "ZerobusWrapper")
     assert hasattr(arrow_zerobus_sdk_wrapper, "ZerobusError")
 
@@ -25,7 +25,7 @@ def test_import_module():
 def test_configuration_creation():
     """Test that WrapperConfiguration can be created."""
     from arrow_zerobus_sdk_wrapper import WrapperConfiguration
-    
+
     config = WrapperConfiguration(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
@@ -33,32 +33,32 @@ def test_configuration_creation():
         client_secret="test_client_secret",
         unity_catalog_url="https://unity-catalog-url",
     )
-    
+
     assert config is not None
 
 
 def test_configuration_validation():
     """Test that configuration validation works."""
-    from arrow_zerobus_sdk_wrapper import WrapperConfiguration, ConfigurationError
-    
+    from arrow_zerobus_sdk_wrapper import WrapperConfiguration
+
     # Valid configuration
     config = WrapperConfiguration(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
     )
-    
+
     # Should not raise
     try:
         config.validate()
     except Exception as e:
         pytest.fail(f"Valid configuration should not raise error: {e}")
-    
+
     # Invalid configuration
     invalid_config = WrapperConfiguration(
         endpoint="invalid-endpoint",
         table_name="test_table",
     )
-    
+
     # Should raise ConfigurationError
     with pytest.raises(Exception):  # Will be ConfigurationError when implemented
         invalid_config.validate()
@@ -66,8 +66,7 @@ def test_configuration_validation():
 
 def test_transmission_result():
     """Test that TransmissionResult can be created and accessed."""
-    from arrow_zerobus_sdk_wrapper import TransmissionResult
-    
+
     # Note: This is a test of the Python class structure
     # Actual TransmissionResult objects are created by the wrapper
     pass
@@ -85,7 +84,7 @@ def test_error_classes():
         RetryExhausted,
         TokenRefreshError,
     )
-    
+
     # Verify all error classes exist
     assert ZerobusError is not None
     assert ConfigurationError is not None
@@ -101,7 +100,7 @@ def test_error_classes():
 def test_wrapper_initialization():
     """Test that ZerobusWrapper can be initialized."""
     from arrow_zerobus_sdk_wrapper import ZerobusWrapper
-    
+
     wrapper = ZerobusWrapper(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
@@ -109,7 +108,7 @@ def test_wrapper_initialization():
         client_secret="test_client_secret",
         unity_catalog_url="https://unity-catalog-url",
     )
-    
+
     assert wrapper is not None
 
 
@@ -117,18 +116,20 @@ def test_wrapper_initialization():
 def test_send_batch():
     """Test sending a RecordBatch."""
     from arrow_zerobus_sdk_wrapper import ZerobusWrapper
-    
+
     # Create test RecordBatch
-    schema = pa.schema([
-        pa.field("id", pa.int64()),
-        pa.field("name", pa.string()),
-    ])
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("name", pa.string()),
+        ]
+    )
     arrays = [
         pa.array([1, 2, 3], type=pa.int64()),
         pa.array(["Alice", "Bob", "Charlie"], type=pa.string()),
     ]
     batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-    
+
     wrapper = ZerobusWrapper(
         endpoint="https://test.cloud.databricks.com",
         table_name="test_table",
@@ -136,10 +137,10 @@ def test_send_batch():
         client_secret="test_client_secret",
         unity_catalog_url="https://unity-catalog-url",
     )
-    
+
     # This will fail without real credentials, but tests the API
     result = wrapper.send_batch(batch)
-    
+
     # Verify result structure
     assert hasattr(result, "success")
     assert hasattr(result, "error")
@@ -150,21 +151,22 @@ def test_send_batch():
 
 def test_record_batch_creation():
     """Test that PyArrow RecordBatch can be created for testing."""
-    schema = pa.schema([
-        pa.field("id", pa.int64()),
-        pa.field("name", pa.string()),
-        pa.field("score", pa.float64()),
-    ])
-    
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("name", pa.string()),
+            pa.field("score", pa.float64()),
+        ]
+    )
+
     arrays = [
         pa.array([1, 2, 3], type=pa.int64()),
         pa.array(["Alice", "Bob", "Charlie"], type=pa.string()),
         pa.array([95.5, 87.0, 92.5], type=pa.float64()),
     ]
-    
+
     batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-    
+
     assert batch.num_rows == 3
     assert batch.num_columns == 3
     assert batch.schema == schema
-

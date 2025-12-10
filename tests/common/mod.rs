@@ -2,6 +2,10 @@
 //!
 //! This module provides shared test infrastructure for all test modules.
 
+mod mocks;
+
+pub use mocks::*;
+
 use arrow::array::{Int64Array, StringArray};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;

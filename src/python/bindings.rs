@@ -43,13 +43,13 @@ pub fn register_module(_py: Python, m: &PyModule) -> PyResult<()> {
 // Note: Made pub for re-export to tests (which are in a separate crate)
 pub fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
     match error {
-        ZerobusError::ConfigurationError(msg) => PyConfigurationError::new_err(msg),
-        ZerobusError::AuthenticationError(msg) => PyAuthenticationError::new_err(msg),
-        ZerobusError::ConnectionError(msg) => PyConnectionError::new_err(msg),
-        ZerobusError::ConversionError(msg) => PyConversionError::new_err(msg),
-        ZerobusError::TransmissionError(msg) => PyTransmissionError::new_err(msg),
-        ZerobusError::RetryExhausted(msg) => PyRetryExhausted::new_err(msg),
-        ZerobusError::TokenRefreshError(msg) => PyTokenRefreshError::new_err(msg),
+        ZerobusError::ConfigurationError(msg) => PyErr::new::<PyConfigurationError, _>(msg),
+        ZerobusError::AuthenticationError(msg) => PyErr::new::<PyAuthenticationError, _>(msg),
+        ZerobusError::ConnectionError(msg) => PyErr::new::<PyConnectionError, _>(msg),
+        ZerobusError::ConversionError(msg) => PyErr::new::<PyConversionError, _>(msg),
+        ZerobusError::TransmissionError(msg) => PyErr::new::<PyTransmissionError, _>(msg),
+        ZerobusError::RetryExhausted(msg) => PyErr::new::<PyRetryExhausted, _>(msg),
+        ZerobusError::TokenRefreshError(msg) => PyErr::new::<PyTokenRefreshError, _>(msg),
     }
 }
 
@@ -67,73 +67,182 @@ impl PyZerobusError {
     // Base exception class for Zerobus errors
 }
 
+// Exception classes with message storage for Python construction
 #[pyclass(name = "ConfigurationError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyConfigurationError;
+pub struct PyConfigurationError {
+    message: String,
+}
 
 #[pyclass(name = "AuthenticationError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyAuthenticationError;
+pub struct PyAuthenticationError {
+    message: String,
+}
 
 #[pyclass(name = "ConnectionError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyConnectionError;
+pub struct PyConnectionError {
+    message: String,
+}
 
 #[pyclass(name = "ConversionError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyConversionError;
+pub struct PyConversionError {
+    message: String,
+}
 
 #[pyclass(name = "TransmissionError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyTransmissionError;
+pub struct PyTransmissionError {
+    message: String,
+}
 
 #[pyclass(name = "RetryExhausted", extends=PyException)]
 #[derive(Debug)]
-pub struct PyRetryExhausted;
+pub struct PyRetryExhausted {
+    message: String,
+}
 
 #[pyclass(name = "TokenRefreshError", extends=PyException)]
 #[derive(Debug)]
-pub struct PyTokenRefreshError;
+pub struct PyTokenRefreshError {
+    message: String,
+}
 
+// Internal helper methods for creating PyErr from Rust
+// These are used by rust_error_to_python_error to convert Rust errors to Python exceptions
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyConfigurationError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyConfigurationError, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyAuthenticationError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyAuthenticationError, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyConnectionError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyConnectionError, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyConversionError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyConversionError, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyTransmissionError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyTransmissionError, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyRetryExhausted {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyRetryExhausted, _>(msg)
     }
 }
 
+#[allow(dead_code)] // Used indirectly via rust_error_to_python_error
 impl PyTokenRefreshError {
     fn new_err(msg: String) -> PyErr {
         PyErr::new::<PyTokenRefreshError, _>(msg)
+    }
+}
+
+// Python constructors for error classes
+#[pymethods]
+impl PyConfigurationError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyAuthenticationError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyConnectionError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyConversionError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyTransmissionError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyRetryExhausted {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
+    }
+}
+
+#[pymethods]
+impl PyTokenRefreshError {
+    #[new]
+    fn new(msg: String) -> Self {
+        Self { message: msg }
+    }
+
+    fn __str__(&self) -> &str {
+        &self.message
     }
 }
 
@@ -187,7 +296,7 @@ impl PyWrapperConfiguration {
                     let output_dir = dict
                         .get_item("output_dir")?
                         .and_then(|v| v.extract::<String>().ok())
-                        .map(|s| std::path::PathBuf::from(s));
+                        .map(std::path::PathBuf::from);
 
                     let write_interval_secs = dict
                         .get_item("write_interval_secs")?
@@ -234,6 +343,83 @@ impl PyWrapperConfiguration {
     fn validate(&self) -> PyResult<()> {
         self.inner.validate().map_err(rust_error_to_python_error)?;
         Ok(())
+    }
+
+    // Getters for configuration fields
+    #[getter]
+    fn endpoint(&self) -> String {
+        self.inner.zerobus_endpoint.clone()
+    }
+
+    #[getter]
+    fn table_name(&self) -> String {
+        self.inner.table_name.clone()
+    }
+
+    #[getter]
+    fn client_id(&self) -> Option<String> {
+        use secrecy::ExposeSecret;
+        self.inner
+            .client_id
+            .as_ref()
+            .map(|s| s.expose_secret().to_string())
+    }
+
+    #[getter]
+    fn client_secret(&self) -> Option<String> {
+        use secrecy::ExposeSecret;
+        self.inner
+            .client_secret
+            .as_ref()
+            .map(|s| s.expose_secret().to_string())
+    }
+
+    #[getter]
+    fn unity_catalog_url(&self) -> Option<String> {
+        self.inner.unity_catalog_url.clone()
+    }
+
+    #[getter]
+    fn debug_enabled(&self) -> bool {
+        self.inner.debug_enabled
+    }
+
+    #[getter]
+    fn debug_output_dir(&self) -> Option<String> {
+        self.inner
+            .debug_output_dir
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+    }
+
+    #[getter]
+    fn debug_flush_interval_secs(&self) -> u64 {
+        self.inner.debug_flush_interval_secs
+    }
+
+    #[getter]
+    fn debug_max_file_size(&self) -> Option<u64> {
+        self.inner.debug_max_file_size
+    }
+
+    #[getter]
+    fn retry_max_attempts(&self) -> u32 {
+        self.inner.retry_max_attempts
+    }
+
+    #[getter]
+    fn retry_base_delay_ms(&self) -> u64 {
+        self.inner.retry_base_delay_ms
+    }
+
+    #[getter]
+    fn retry_max_delay_ms(&self) -> u64 {
+        self.inner.retry_max_delay_ms
+    }
+
+    #[getter]
+    fn observability_enabled(&self) -> bool {
+        self.inner.observability_enabled
     }
 }
 
