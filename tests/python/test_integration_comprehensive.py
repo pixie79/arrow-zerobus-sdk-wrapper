@@ -104,15 +104,12 @@ async def test_concurrent_python_operations():
     async def create_wrapper():
         """Helper to create wrapper."""
         try:
-            _config = WrapperConfiguration(
+            config = WrapperConfiguration(
                 endpoint="https://test.cloud.databricks.com",
                 table_name="test_table",
             )
-            _wrapper = ZerobusWrapper(
-                endpoint="https://test.cloud.databricks.com",
-                table_name="test_table",
-            )
-            return _wrapper
+            wrapper = ZerobusWrapper(config)
+            return wrapper
         except Exception:
             return None
 
@@ -160,13 +157,15 @@ def test_record_batch_conversion():
     # Test that batch can be passed to wrapper (if available)
     # This is a structural test - actual conversion happens in send_batch
     try:
-        _wrapper = ZerobusWrapper(
+        config = WrapperConfiguration(
             endpoint="https://test.cloud.databricks.com",
             table_name="test_table",
         )
+        wrapper = ZerobusWrapper(config)
 
         # The batch should be convertible (actual conversion tested in send_batch)
         assert batch is not None
+        assert wrapper is not None
 
     except Exception:
         # Expected if credentials required

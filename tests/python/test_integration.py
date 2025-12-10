@@ -9,7 +9,7 @@ import pyarrow as pa
 
 # Skip all tests if the module is not available
 try:
-    import arrow_zerobus_sdk_wrapper  # noqa: F401
+    import arrow_zerobus_sdk_wrapper  # noqa: F401  # Used in test_import_module
 except ImportError:
     pytestmark = pytest.mark.skip("arrow_zerobus_sdk_wrapper not available")
 
