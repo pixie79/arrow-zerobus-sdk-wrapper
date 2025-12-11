@@ -102,8 +102,16 @@ jobs:
       - name: Validate CHANGELOG format
         run: |
           # Check that CHANGELOG follows Keep a Changelog format
+          # The Unreleased section should be the first section (after any header)
           if ! grep -q "^## \[Unreleased\]" CHANGELOG.md; then
-            echo "❌ CHANGELOG.md must start with '## [Unreleased]' section"
+            echo "❌ CHANGELOG.md must contain '## [Unreleased]' section"
+            exit 1
+          fi
+          
+          # Verify Unreleased is the first section (skip header lines starting with #)
+          FIRST_SECTION=$(grep -E '^## ' CHANGELOG.md | head -1)
+          if [ "$FIRST_SECTION" != "## [Unreleased]" ]; then
+            echo "❌ CHANGELOG.md must have '## [Unreleased]' as the first section (found: $FIRST_SECTION)"
             exit 1
           fi
           
