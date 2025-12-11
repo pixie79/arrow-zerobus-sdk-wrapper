@@ -127,9 +127,10 @@ def test_get_error_messages():
     error_messages = result.get_error_messages()
 
     assert len(error_messages) == 3
-    assert "Field 'name' type mismatch" in error_messages
-    assert "Network timeout" in error_messages
-    assert "Field 'age' missing required value" in error_messages
+    # Note: ZerobusError.to_string() includes the error type prefix (lowercase)
+    assert "Conversion error: Field 'name' type mismatch" in error_messages
+    assert "Transmission error: Network timeout" in error_messages
+    assert "Conversion error: Field 'age' missing required value" in error_messages
 
 
 def test_get_error_messages_empty():
