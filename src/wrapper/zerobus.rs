@@ -81,9 +81,9 @@ fn get_failure_rate_state(
 
 fn get_failure_rate_backoff_state(
 ) -> &'static std::sync::Mutex<std::collections::HashMap<String, FailureRateBackoffState>> {
-    FAILURE_RATE_BACKOFF_STATE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+    FAILURE_RATE_BACKOFF_STATE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
-
 
 /// Failure rate threshold (1% = 0.01)
 const FAILURE_RATE_THRESHOLD: f64 = 0.01;
@@ -193,15 +193,15 @@ pub fn update_failure_rate(
     });
 
     let now = Instant::now();
-    
+
     // Get or create state for this table
-    let table_state = state_guard.entry(table_name.to_string()).or_insert_with(|| {
-        FailureRateState {
+    let table_state = state_guard
+        .entry(table_name.to_string())
+        .or_insert_with(|| FailureRateState {
             total_rows: 0,
             failed_rows: 0,
             last_update: now,
-        }
-    });
+        });
 
     // Reset window if too old
     if now.duration_since(table_state.last_update) > FAILURE_RATE_WINDOW {
@@ -230,7 +230,8 @@ pub fn update_failure_rate(
     );
 
     // Check if failure rate exceeds threshold
-    if failure_rate > FAILURE_RATE_THRESHOLD && table_state.total_rows >= MIN_ROWS_FOR_FAILURE_RATE {
+    if failure_rate > FAILURE_RATE_THRESHOLD && table_state.total_rows >= MIN_ROWS_FOR_FAILURE_RATE
+    {
         // Calculate backoff with jitter
         let mut rng = rand::thread_rng();
         let jitter = rng.gen_range(0..=FAILURE_RATE_BACKOFF_JITTER_SECS);
@@ -251,9 +252,7 @@ pub fn update_failure_rate(
         backoff_guard.retain(|_, state| state.backoff_until > now);
         backoff_guard.insert(
             table_name.to_string(),
-            FailureRateBackoffState {
-                backoff_until,
-            },
+            FailureRateBackoffState { backoff_until },
         );
 
         warn!(
@@ -295,7 +294,7 @@ pub async fn ensure_stream(
 ) -> Result<ZerobusStream, ZerobusError> {
     // Check if we're in backoff period for error 6006 (per-table)
     check_error_6006_backoff(&table_name).await?;
-    
+
     // Check if we're in backoff period due to high failure rate (per-table)
     check_failure_rate_backoff(&table_name).await?;
 

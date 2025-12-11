@@ -27,7 +27,8 @@ pub struct DebugWriter {
     #[allow(dead_code)]
     output_dir: PathBuf,
     /// Arrow IPC stream writer
-    arrow_writer: Arc<tokio::sync::Mutex<Option<arrow::ipc::writer::StreamWriter<BufWriter<std::fs::File>>>>>,
+    arrow_writer:
+        Arc<tokio::sync::Mutex<Option<arrow::ipc::writer::StreamWriter<BufWriter<std::fs::File>>>>>,
     /// Protobuf file writer
     protobuf_writer: Arc<tokio::sync::Mutex<Option<BufWriter<std::fs::File>>>>,
     /// Current Arrow file path (mutable for rotation)
@@ -103,7 +104,7 @@ impl DebugWriter {
     }
 
     /// Generate rotated file path with timestamp
-    fn generate_rotated_path(base_path: &PathBuf) -> PathBuf {
+    fn generate_rotated_path(base_path: &std::path::Path) -> PathBuf {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let parent = base_path
             .parent()
@@ -118,7 +119,10 @@ impl DebugWriter {
     }
 
     /// Ensure Arrow writer is initialized
-    async fn ensure_arrow_writer(&self, schema: &arrow::datatypes::Schema) -> Result<(), ZerobusError> {
+    async fn ensure_arrow_writer(
+        &self,
+        schema: &arrow::datatypes::Schema,
+    ) -> Result<(), ZerobusError> {
         let mut writer_guard = self.arrow_writer.lock().await;
         if writer_guard.is_none() {
             let file_path_guard = self.arrow_file_path.lock().await;
@@ -133,12 +137,13 @@ impl DebugWriter {
             })?;
 
             let buf_writer = BufWriter::new(file);
-            let writer = arrow::ipc::writer::StreamWriter::try_new(buf_writer, schema).map_err(|e| {
-                ZerobusError::ConfigurationError(format!(
-                    "Failed to create Arrow IPC stream writer: {}",
-                    e
-                ))
-            })?;
+            let writer =
+                arrow::ipc::writer::StreamWriter::try_new(buf_writer, schema).map_err(|e| {
+                    ZerobusError::ConfigurationError(format!(
+                        "Failed to create Arrow IPC stream writer: {}",
+                        e
+                    ))
+                })?;
 
             *writer_guard = Some(writer);
             info!("✅ Created Arrow IPC stream file: {}", file_path.display());
@@ -208,12 +213,14 @@ impl DebugWriter {
                 let file_path = file_path_guard.clone();
                 drop(file_path_guard);
 
-                if let Some(new_path) = rotate_file_if_needed(&file_path, max_size).map_err(|e| {
-                    ZerobusError::ConfigurationError(format!(
-                        "Failed to check Arrow file size: {}",
-                        e
-                    ))
-                })? {
+                if let Some(new_path) =
+                    rotate_file_if_needed(&file_path, max_size).map_err(|e| {
+                        ZerobusError::ConfigurationError(format!(
+                            "Failed to check Arrow file size: {}",
+                            e
+                        ))
+                    })?
+                {
                     // Close current writer
                     let mut writer_guard = self.arrow_writer.lock().await;
                     if let Some(writer) = writer_guard.take() {
@@ -229,7 +236,10 @@ impl DebugWriter {
                     // Reset record count
                     *record_count_guard = 0;
 
-                    info!("🔄 Rotated Arrow file due to size limit: {}", new_path.display());
+                    info!(
+                        "🔄 Rotated Arrow file due to size limit: {}",
+                        new_path.display()
+                    );
                     return Ok(true);
                 }
             }
@@ -238,7 +248,10 @@ impl DebugWriter {
     }
 
     /// Rotate Protobuf file if needed (based on record count or file size)
-    async fn rotate_protobuf_file_if_needed(&self, record_count: usize) -> Result<bool, ZerobusError> {
+    async fn rotate_protobuf_file_if_needed(
+        &self,
+        record_count: usize,
+    ) -> Result<bool, ZerobusError> {
         let mut record_count_guard = self.protobuf_record_count.lock().await;
         let current_count = *record_count_guard;
         let new_count = current_count + record_count;
@@ -284,12 +297,14 @@ impl DebugWriter {
                 let file_path = file_path_guard.clone();
                 drop(file_path_guard);
 
-                if let Some(new_path) = rotate_file_if_needed(&file_path, max_size).map_err(|e| {
-                    ZerobusError::ConfigurationError(format!(
-                        "Failed to check Protobuf file size: {}",
-                        e
-                    ))
-                })? {
+                if let Some(new_path) =
+                    rotate_file_if_needed(&file_path, max_size).map_err(|e| {
+                        ZerobusError::ConfigurationError(format!(
+                            "Failed to check Protobuf file size: {}",
+                            e
+                        ))
+                    })?
+                {
                     // Close current writer
                     let mut writer_guard = self.protobuf_writer.lock().await;
                     if let Some(mut writer) = writer_guard.take() {
@@ -311,7 +326,10 @@ impl DebugWriter {
                     // Reset record count
                     *record_count_guard = 0;
 
-                    info!("🔄 Rotated Protobuf file due to size limit: {}", new_path.display());
+                    info!(
+                        "🔄 Rotated Protobuf file due to size limit: {}",
+                        new_path.display()
+                    );
                     return Ok(true);
                 }
             }
@@ -333,7 +351,7 @@ impl DebugWriter {
 
         // Check if rotation is needed before writing
         let _rotated = self.rotate_arrow_file_if_needed(batch_rows).await?;
-        
+
         // Ensure writer is initialized (with correct schema)
         self.ensure_arrow_writer(batch.schema().as_ref()).await?;
 
@@ -354,7 +372,10 @@ impl DebugWriter {
         *record_count_guard += batch_rows;
         drop(record_count_guard);
 
-        debug!("Wrote Arrow RecordBatch ({} rows) to debug file", batch_rows);
+        debug!(
+            "Wrote Arrow RecordBatch ({} rows) to debug file",
+            batch_rows
+        );
         Ok(())
     }
 

@@ -1053,8 +1053,14 @@ impl ZerobusWrapper {
             // This allows the SDK to queue multiple records before flushing, improving performance
             const BATCH_SIZE: usize = 1000; // Flush every 1000 records
             const BATCH_SIZE_BYTES: usize = 10 * 1024 * 1024; // Or every 10MB
-            // Store futures with their row indices - using a type-erased future
-            type IngestFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<i64, databricks_zerobus_ingest_sdk::ZerobusError>> + Send>>;
+                                                              // Store futures with their row indices - using a type-erased future
+            type IngestFuture = std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = Result<i64, databricks_zerobus_ingest_sdk::ZerobusError>,
+                        > + Send,
+                >,
+            >;
             let mut pending_futures: Vec<(usize, IngestFuture)> = Vec::new();
             let mut total_bytes_buffered = 0usize;
             let mut should_break_outer = false; // Track if we need to break outer retry loop
@@ -1069,7 +1075,9 @@ impl ZerobusWrapper {
                 // encountered error 6006 or high failure rate). We check before each record to prevent writes
                 // during backoff period.
                 {
-                    use crate::wrapper::zerobus::{check_error_6006_backoff, check_failure_rate_backoff};
+                    use crate::wrapper::zerobus::{
+                        check_error_6006_backoff, check_failure_rate_backoff,
+                    };
                     if let Err(_backoff_err) =
                         check_error_6006_backoff(&self.config.table_name).await
                     {
@@ -1173,20 +1181,25 @@ impl ZerobusWrapper {
                     Ok(ingest_future) => {
                         // Release lock before collecting future to avoid blocking
                         drop(stream_guard);
-                        
+
                         // Collect future for batch processing
                         // Box the future to store in Vec (type erasure for different future types)
                         pending_futures.push((idx, Box::pin(ingest_future)));
                         total_bytes_buffered += bytes.len();
 
                         // Periodically flush and await futures to manage memory and ensure progress
-                        if pending_futures.len() >= BATCH_SIZE || total_bytes_buffered >= BATCH_SIZE_BYTES {
+                        if pending_futures.len() >= BATCH_SIZE
+                            || total_bytes_buffered >= BATCH_SIZE_BYTES
+                        {
                             // Flush stream to send buffered records
                             {
                                 let mut stream_guard = self.stream.lock().await;
                                 if let Some(ref mut stream) = *stream_guard {
                                     if let Err(e) = stream.flush().await {
-                                        error!("Failed to flush Zerobus stream during batch: {}", e);
+                                        error!(
+                                            "Failed to flush Zerobus stream during batch: {}",
+                                            e
+                                        );
                                         // Mark all pending futures as failed
                                         for (pending_idx, _) in pending_futures.drain(..) {
                                             attempt_transmission_errors.push((
@@ -1332,7 +1345,10 @@ impl ZerobusWrapper {
                         // Attempt to flush - if stream is closed, this will fail but we still want to await futures
                         match stream.flush().await {
                             Ok(_) => {
-                                debug!("✅ Flushed Zerobus stream for {} remaining pending futures", pending_futures.len());
+                                debug!(
+                                    "✅ Flushed Zerobus stream for {} remaining pending futures",
+                                    pending_futures.len()
+                                );
                             }
                             Err(e) => {
                                 warn!("Failed to flush Zerobus stream for remaining records (stream may be closed): {}", e);
@@ -1347,7 +1363,8 @@ impl ZerobusWrapper {
                             attempt_transmission_errors.push((
                                 pending_idx,
                                 ZerobusError::ConnectionError(
-                                    "Stream was closed before flushing remaining records".to_string(),
+                                    "Stream was closed before flushing remaining records"
+                                        .to_string(),
                                 ),
                             ));
                         }
@@ -1427,7 +1444,10 @@ impl ZerobusWrapper {
                             // Don't fail the entire batch if flush fails - records may still be in transit
                             // But log the error for monitoring
                         } else {
-                            debug!("✅ Flushed Zerobus stream after sending {} records", attempt_successful_indices.len());
+                            debug!(
+                                "✅ Flushed Zerobus stream after sending {} records",
+                                attempt_successful_indices.len()
+                            );
                         }
                     }
                 }
