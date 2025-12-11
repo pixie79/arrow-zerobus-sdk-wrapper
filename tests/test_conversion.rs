@@ -111,9 +111,14 @@ fn test_record_batch_to_protobuf_bytes() {
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
 
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3); // One per row
+    // Function now returns ProtobufConversionResult directly
+    assert_eq!(result.successful_bytes.len(), 3); // One per row
+    assert_eq!(result.failed_rows.len(), 0); // All rows should succeed
+    let bytes_list: Vec<Vec<u8>> = result
+        .successful_bytes
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
 
     // Each row should have some bytes (not empty)
     for (idx, bytes) in bytes_list.iter().enumerate() {
@@ -157,8 +162,13 @@ fn test_record_batch_to_protobuf_bytes_empty_batch() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
+    assert_eq!(result.successful_bytes.len(), 0);
+    assert_eq!(result.failed_rows.len(), 0);
+    let bytes_list: Vec<Vec<u8>> = result
+        .successful_bytes
+        .into_iter()
+        .map(|(_, bytes)| bytes)
+        .collect();
     assert_eq!(bytes_list.len(), 0);
 }
 
@@ -219,9 +229,13 @@ fn test_record_batch_to_protobuf_bytes_with_nulls() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+
+    // Sort by row index to maintain order
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
 
     // Null fields should be skipped in Protobuf encoding
     // Row 0: id=1, name="Alice" -> should have bytes

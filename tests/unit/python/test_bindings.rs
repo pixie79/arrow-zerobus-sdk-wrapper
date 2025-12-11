@@ -84,6 +84,11 @@ mod python_bindings_tests {
             attempts: 3,
             latency_ms: Some(150),
             batch_size_bytes: 2048,
+            failed_rows: None,
+            successful_rows: None,
+            total_rows: 0,
+            successful_count: 0,
+            failed_count: 0,
         };
 
         let py_result = PyTransmissionResult { inner: result };
@@ -105,6 +110,11 @@ mod python_bindings_tests {
             attempts: 5,
             latency_ms: None,
             batch_size_bytes: 1024,
+            failed_rows: None,
+            successful_rows: None,
+            total_rows: 0,
+            successful_count: 0,
+            failed_count: 0,
         };
 
         let py_result = PyTransmissionResult { inner: result };

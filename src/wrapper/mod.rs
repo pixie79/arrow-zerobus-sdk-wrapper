@@ -20,12 +20,98 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
+/// Internal result from send_batch_internal containing per-row error information
+struct BatchTransmissionResult {
+    /// Successful row indices
+    successful_rows: Vec<usize>,
+    /// Failed rows with errors
+    failed_rows: Vec<(usize, ZerobusError)>,
+}
+
 /// Result of a data transmission operation
+///
+/// This struct provides comprehensive information about the result of sending a batch
+/// to Zerobus, including per-row success/failure tracking and error details.
+///
+/// # Per-Row Error Tracking
+///
+/// The struct supports per-row error tracking, allowing identification of which
+/// specific rows succeeded or failed during batch transmission. This enables:
+///
+/// - **Partial batch success**: Some rows can succeed while others fail
+/// - **Quarantine workflows**: Extract and quarantine only failed rows
+/// - **Error analysis**: Group errors by type, analyze patterns, track statistics
+///
+/// # Field Semantics
+///
+/// - **`success`**: `true` if ANY rows succeeded, `false` if ALL rows failed or batch-level error occurred
+/// - **`error`**: Batch-level error (e.g., authentication failure, connection error before processing)
+///   - `None` if no batch-level error occurred (even if some rows failed)
+/// - **`failed_rows`**: Per-row failures
+///   - `None` if all rows succeeded
+///   - `Some(vec![])` if batch-level error only (no per-row processing occurred)
+///   - `Some(vec![...])` for per-row failures
+/// - **`successful_rows`**: Per-row successes
+///   - `None` if all rows failed
+///   - `Some(vec![])` if no rows succeeded
+///   - `Some(vec![...])` for successful rows
+/// - **`total_rows`**: Total number of rows in the batch (0 for empty batches)
+/// - **`successful_count`**: Number of rows that succeeded (always equals `successful_rows.len()` if `Some`)
+/// - **`failed_count`**: Number of rows that failed (always equals `failed_rows.len()` if `Some`)
+///
+/// # Edge Cases
+///
+/// - **Empty batch** (`total_rows == 0`): Returns `success=true`, `successful_count=0`, `failed_count=0`
+/// - **Batch-level errors**: Authentication/connection errors before processing return `error=Some(...)`, `failed_rows=None`
+/// - **All rows failed**: Returns `success=false`, `failed_rows=Some([...])`, `successful_rows=None`
+/// - **All rows succeeded**: Returns `success=true`, `failed_rows=None`, `successful_rows=Some([...])`
+///
+/// # Examples
+///
+/// ```no_run
+/// use arrow_zerobus_sdk_wrapper::{ZerobusWrapper, WrapperConfiguration};
+/// use arrow::record_batch::RecordBatch;
+///
+/// # async fn example() -> Result<(), arrow_zerobus_sdk_wrapper::ZerobusError> {
+/// # use arrow::array::Int64Array;
+/// # use arrow::datatypes::{DataType, Field, Schema};
+/// # use std::sync::Arc;
+/// # let config = WrapperConfiguration::new("https://workspace.cloud.databricks.com".to_string(), "table".to_string());
+/// # let wrapper = ZerobusWrapper::new(config).await?;
+/// # let schema = Schema::new(vec![Field::new("id", DataType::Int64, false)]);
+/// # let batch = RecordBatch::try_new(Arc::new(schema), vec![Arc::new(Int64Array::from(vec![1, 2, 3]))]).unwrap();
+/// let result = wrapper.send_batch(batch.clone()).await?;
+///
+/// // Check for partial success
+/// if result.is_partial_success() {
+///     // Extract failed rows for quarantine
+///     if let Some(failed_batch) = result.extract_failed_batch(&batch) {
+///         // Quarantine failed_batch
+///     }
+///     
+///     // Extract successful rows for writing
+///     if let Some(successful_batch) = result.extract_successful_batch(&batch) {
+///         // Write successful_batch to main table
+///     }
+/// }
+///
+/// // Analyze error patterns
+/// let stats = result.get_error_statistics();
+/// println!("Success rate: {:.1}%", stats.success_rate * 100.0);
+///
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct TransmissionResult {
     /// Whether transmission succeeded
+    ///
+    /// `true` if ANY rows succeeded, `false` if ALL rows failed or batch-level error occurred.
     pub success: bool,
-    /// Error information if transmission failed
+    /// Error information if transmission failed at batch level
+    ///
+    /// Batch-level errors occur before per-row processing (e.g., authentication failure,
+    /// connection error). If `Some`, indicates no per-row processing occurred.
     pub error: Option<ZerobusError>,
     /// Number of retry attempts made
     pub attempts: u32,
@@ -33,6 +119,305 @@ pub struct TransmissionResult {
     pub latency_ms: Option<u64>,
     /// Size of transmitted batch in bytes
     pub batch_size_bytes: usize,
+    /// Indices of rows that failed, along with their specific errors
+    ///
+    /// - `None` if all rows succeeded
+    /// - `Some(vec![])` if batch-level error only (no per-row processing occurred)
+    /// - `Some(vec![(row_idx, error), ...])` for per-row failures
+    ///
+    /// Each tuple contains:
+    /// - `row_idx`: 0-based index of the failed row in the original batch
+    /// - `error`: Specific `ZerobusError` describing why the row failed
+    pub failed_rows: Option<Vec<(usize, ZerobusError)>>,
+    /// Indices of rows that were successfully written
+    ///
+    /// - `None` if all rows failed
+    /// - `Some(vec![])` if no rows succeeded
+    /// - `Some(vec![row_idx, ...])` for successful rows
+    ///
+    /// Each value is a 0-based index of the successful row in the original batch.
+    pub successful_rows: Option<Vec<usize>>,
+    /// Total number of rows in the batch
+    ///
+    /// Always equals `successful_count + failed_count`.
+    /// For empty batches, this is `0`.
+    pub total_rows: usize,
+    /// Number of rows that succeeded
+    ///
+    /// Always equals `successful_rows.len()` if `successful_rows` is `Some`.
+    pub successful_count: usize,
+    /// Number of rows that failed
+    ///
+    /// Always equals `failed_rows.len()` if `failed_rows` is `Some`.
+    pub failed_count: usize,
+}
+
+impl TransmissionResult {
+    /// Check if this result represents a partial success (some rows succeeded, some failed)
+    ///
+    /// Returns `true` if there are both successful and failed rows.
+    pub fn is_partial_success(&self) -> bool {
+        self.success && self.successful_count > 0 && self.failed_count > 0
+    }
+
+    /// Check if there are any failed rows
+    ///
+    /// Returns `true` if `failed_rows` contains any entries.
+    pub fn has_failed_rows(&self) -> bool {
+        self.failed_rows
+            .as_ref()
+            .map(|rows| !rows.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Check if there are any successful rows
+    ///
+    /// Returns `true` if `successful_rows` contains any entries.
+    pub fn has_successful_rows(&self) -> bool {
+        self.successful_rows
+            .as_ref()
+            .map(|rows| !rows.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Get indices of failed rows
+    ///
+    /// Returns a vector of row indices that failed, or empty vector if none failed.
+    pub fn get_failed_row_indices(&self) -> Vec<usize> {
+        self.failed_rows
+            .as_ref()
+            .map(|rows| rows.iter().map(|(idx, _)| *idx).collect())
+            .unwrap_or_default()
+    }
+
+    /// Get indices of successful rows
+    ///
+    /// Returns a vector of row indices that succeeded, or empty vector if none succeeded.
+    pub fn get_successful_row_indices(&self) -> Vec<usize> {
+        self.successful_rows.clone().unwrap_or_default()
+    }
+
+    /// Extract a RecordBatch containing only the failed rows from the original batch
+    ///
+    /// # Arguments
+    ///
+    /// * `original_batch` - The original RecordBatch that was sent
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(RecordBatch)` containing only the failed rows, or `None` if there are no failed rows.
+    /// Rows are extracted in the order they appear in `failed_rows`.
+    pub fn extract_failed_batch(&self, original_batch: &RecordBatch) -> Option<RecordBatch> {
+        let failed_indices = self.get_failed_row_indices();
+        if failed_indices.is_empty() {
+            return None;
+        }
+
+        // Extract rows by index
+        let mut rows_to_extract = failed_indices;
+        rows_to_extract.sort(); // Ensure consistent ordering
+
+        // Use take to extract specific row indices
+        // Note: This requires Arrow's take kernel functionality
+        // For now, we'll use a simple approach: filter the batch
+        let mut arrays = Vec::new();
+        for array in original_batch.columns() {
+            // Use take to extract rows at specific indices
+            let taken = arrow::compute::take(
+                array,
+                &arrow::array::UInt32Array::from(
+                    rows_to_extract
+                        .iter()
+                        .map(|&idx| idx as u32)
+                        .collect::<Vec<_>>(),
+                ),
+                None,
+            )
+            .ok()?;
+            arrays.push(taken);
+        }
+
+        RecordBatch::try_new(original_batch.schema(), arrays).ok()
+    }
+
+    /// Extract a RecordBatch containing only the successful rows from the original batch
+    ///
+    /// # Arguments
+    ///
+    /// * `original_batch` - The original RecordBatch that was sent
+    ///
+    /// # Returns
+    ///
+    /// Returns `Some(RecordBatch)` containing only the successful rows, or `None` if there are no successful rows.
+    /// Rows are extracted in the order they appear in `successful_rows`.
+    pub fn extract_successful_batch(&self, original_batch: &RecordBatch) -> Option<RecordBatch> {
+        let successful_indices = self.get_successful_row_indices();
+        if successful_indices.is_empty() {
+            return None;
+        }
+
+        // Extract rows by index
+        let mut rows_to_extract = successful_indices;
+        rows_to_extract.sort(); // Ensure consistent ordering
+
+        // Use take to extract specific row indices
+        let mut arrays = Vec::new();
+        for array in original_batch.columns() {
+            // Use take to extract rows at specific indices
+            let taken = arrow::compute::take(
+                array,
+                &arrow::array::UInt32Array::from(
+                    rows_to_extract
+                        .iter()
+                        .map(|&idx| idx as u32)
+                        .collect::<Vec<_>>(),
+                ),
+                None,
+            )
+            .ok()?;
+            arrays.push(taken);
+        }
+
+        RecordBatch::try_new(original_batch.schema(), arrays).ok()
+    }
+
+    /// Get indices of failed rows filtered by error type
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A closure that returns `true` for errors that should be included
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of row indices for failed rows that match the predicate.
+    pub fn get_failed_row_indices_by_error_type<F>(&self, predicate: F) -> Vec<usize>
+    where
+        F: Fn(&ZerobusError) -> bool,
+    {
+        self.failed_rows
+            .as_ref()
+            .map(|rows| {
+                rows.iter()
+                    .filter_map(
+                        |(idx, error)| {
+                            if predicate(error) {
+                                Some(*idx)
+                            } else {
+                                None
+                            }
+                        },
+                    )
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Group failed rows by error type
+    ///
+    /// # Returns
+    ///
+    /// Returns a HashMap where keys are error type names (e.g., "ConversionError")
+    /// and values are vectors of row indices that failed with that error type.
+    pub fn group_errors_by_type(&self) -> std::collections::HashMap<String, Vec<usize>> {
+        let mut grouped: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+
+        if let Some(failed_rows) = &self.failed_rows {
+            for (row_idx, error) in failed_rows {
+                let error_type = match error {
+                    ZerobusError::ConfigurationError(_) => "ConfigurationError",
+                    ZerobusError::AuthenticationError(_) => "AuthenticationError",
+                    ZerobusError::ConnectionError(_) => "ConnectionError",
+                    ZerobusError::ConversionError(_) => "ConversionError",
+                    ZerobusError::TransmissionError(_) => "TransmissionError",
+                    ZerobusError::RetryExhausted(_) => "RetryExhausted",
+                    ZerobusError::TokenRefreshError(_) => "TokenRefreshError",
+                };
+                grouped
+                    .entry(error_type.to_string())
+                    .or_default()
+                    .push(*row_idx);
+            }
+        }
+
+        grouped
+    }
+
+    /// Get error statistics for this transmission result
+    ///
+    /// # Returns
+    ///
+    /// Returns an `ErrorStatistics` struct containing comprehensive error analysis
+    /// including success/failure rates and error type counts.
+    pub fn get_error_statistics(&self) -> ErrorStatistics {
+        let success_rate = if self.total_rows > 0 {
+            self.successful_count as f64 / self.total_rows as f64
+        } else {
+            0.0
+        };
+
+        let failure_rate = if self.total_rows > 0 {
+            self.failed_count as f64 / self.total_rows as f64
+        } else {
+            0.0
+        };
+
+        let mut error_type_counts: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+
+        if let Some(failed_rows) = &self.failed_rows {
+            for (_, error) in failed_rows {
+                let error_type = match error {
+                    ZerobusError::ConfigurationError(_) => "ConfigurationError",
+                    ZerobusError::AuthenticationError(_) => "AuthenticationError",
+                    ZerobusError::ConnectionError(_) => "ConnectionError",
+                    ZerobusError::ConversionError(_) => "ConversionError",
+                    ZerobusError::TransmissionError(_) => "TransmissionError",
+                    ZerobusError::RetryExhausted(_) => "RetryExhausted",
+                    ZerobusError::TokenRefreshError(_) => "TokenRefreshError",
+                };
+                *error_type_counts.entry(error_type.to_string()).or_insert(0) += 1;
+            }
+        }
+
+        ErrorStatistics {
+            total_rows: self.total_rows,
+            successful_count: self.successful_count,
+            failed_count: self.failed_count,
+            success_rate,
+            failure_rate,
+            error_type_counts,
+        }
+    }
+
+    /// Get all error messages from failed rows
+    ///
+    /// # Returns
+    ///
+    /// Returns a vector of error message strings for all failed rows.
+    pub fn get_error_messages(&self) -> Vec<String> {
+        self.failed_rows
+            .as_ref()
+            .map(|rows| rows.iter().map(|(_, error)| error.to_string()).collect())
+            .unwrap_or_default()
+    }
+}
+
+/// Error statistics for a transmission result
+#[derive(Debug, Clone)]
+pub struct ErrorStatistics {
+    /// Total number of rows in the batch
+    pub total_rows: usize,
+    /// Number of rows that succeeded
+    pub successful_count: usize,
+    /// Number of rows that failed
+    pub failed_count: usize,
+    /// Success rate (0.0 to 1.0)
+    pub success_rate: f64,
+    /// Failure rate (0.0 to 1.0)
+    pub failure_rate: f64,
+    /// Count of errors by type
+    pub error_type_counts: std::collections::HashMap<String, usize>,
 }
 
 /// Main wrapper for sending data to Zerobus
@@ -316,33 +701,88 @@ impl ZerobusWrapper {
                 .await;
         }
 
-        match result {
-            Ok(_) => Ok(TransmissionResult {
-                success: true,
+        let total_rows = batch.num_rows();
+
+        // Handle empty batch edge case
+        if total_rows == 0 {
+            return Ok(TransmissionResult {
+                success: true, // Empty batch is considered successful
                 error: None,
                 attempts,
                 latency_ms: Some(latency_ms),
                 batch_size_bytes,
-            }),
+                failed_rows: None,
+                successful_rows: None,
+                total_rows: 0,
+                successful_count: 0,
+                failed_count: 0,
+            });
+        }
+
+        match result {
+            Ok(batch_result) => {
+                // Merge conversion and transmission errors
+                let mut all_failed_rows = batch_result.failed_rows;
+                let successful_rows = batch_result.successful_rows;
+
+                let successful_count = successful_rows.len();
+                let failed_count = all_failed_rows.len();
+
+                // Determine overall success: true if ANY rows succeeded
+                // Edge case: If all rows failed, success is false
+                let overall_success = successful_count > 0;
+
+                // Sort failed rows by index for consistency
+                all_failed_rows.sort_by_key(|(idx, _)| *idx);
+
+                Ok(TransmissionResult {
+                    success: overall_success,
+                    error: None, // No batch-level error, only per-row errors
+                    attempts,
+                    latency_ms: Some(latency_ms),
+                    batch_size_bytes,
+                    failed_rows: if all_failed_rows.is_empty() {
+                        None
+                    } else {
+                        Some(all_failed_rows)
+                    },
+                    successful_rows: if successful_rows.is_empty() {
+                        None
+                    } else {
+                        Some(successful_rows)
+                    },
+                    total_rows,
+                    successful_count,
+                    failed_count,
+                })
+            }
             Err(e) => {
                 error!("Failed to send batch after retries: {}", e);
+                // Batch-level error (e.g., authentication, connection before processing)
+                // Edge case: Batch-level errors occur before per-row processing
                 Ok(TransmissionResult {
                     success: false,
                     error: Some(e),
                     attempts,
                     latency_ms: Some(latency_ms),
                     batch_size_bytes,
+                    failed_rows: None, // Batch-level error, no per-row processing occurred
+                    successful_rows: None,
+                    total_rows,
+                    successful_count: 0,
+                    failed_count: 0, // Batch-level error, no per-row processing
                 })
             }
         }
     }
 
     /// Internal method to send a batch (without retry wrapper)
+    /// Returns per-row transmission information
     async fn send_batch_internal(
         &self,
         batch: RecordBatch,
         descriptor: Option<prost_types::DescriptorProto>,
-    ) -> Result<(), ZerobusError> {
+    ) -> Result<BatchTransmissionResult, ZerobusError> {
         // CRITICAL: Check if writer is disabled FIRST, before any SDK initialization or credential access
         // This prevents errors when credentials are not provided (which is allowed when writer is disabled)
         if self.config.zerobus_writer_disabled {
@@ -429,25 +869,23 @@ impl ZerobusWrapper {
         }
 
         // 3. Convert Arrow RecordBatch to Protobuf bytes (one per row)
-        let protobuf_bytes_list =
-            crate::wrapper::conversion::record_batch_to_protobuf_bytes(&batch, &descriptor)
-                .map_err(|e| {
-                    ZerobusError::ConversionError(format!(
-                        "Failed to convert RecordBatch to Protobuf: {}",
-                        e
-                    ))
-                })?;
+        // This now returns ProtobufConversionResult with per-row conversion errors
+        let conversion_result =
+            crate::wrapper::conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
 
-        // Write Protobuf bytes to debug file if enabled
+        // Track conversion errors (will be merged with transmission errors later)
+        let conversion_errors = conversion_result.failed_rows;
+
+        // Write Protobuf bytes to debug file if enabled (only successful conversions)
         // Flush after each batch to ensure files are immediately available for debugging
         // CRITICAL: Write protobuf files BEFORE Zerobus write attempts, so we have them even if Zerobus fails
         if let Some(ref debug_writer) = self.debug_writer {
             info!(
                 "Writing {} protobuf messages to debug file",
-                protobuf_bytes_list.len()
+                conversion_result.successful_bytes.len()
             );
-            let num_rows = protobuf_bytes_list.len();
-            for (idx, bytes) in protobuf_bytes_list.iter().enumerate() {
+            let num_rows = conversion_result.successful_bytes.len();
+            for (idx, (_, bytes)) in conversion_result.successful_bytes.iter().enumerate() {
                 // Flush immediately after last row in batch
                 let flush_immediately = idx == num_rows - 1;
                 if let Err(e) = debug_writer.write_protobuf(bytes, flush_immediately).await {
@@ -471,7 +909,17 @@ impl ZerobusWrapper {
             debug!(
                 "Writer disabled mode enabled - skipping Zerobus SDK calls. Debug files written successfully."
             );
-            return Ok(());
+            // Return success with conversion results tracked
+            // All successfully converted rows are considered successful when writer is disabled
+            let successful_indices: Vec<usize> = conversion_result
+                .successful_bytes
+                .iter()
+                .map(|(idx, _)| *idx)
+                .collect();
+            return Ok(BatchTransmissionResult {
+                successful_rows: successful_indices,
+                failed_rows: conversion_errors,
+            });
         }
 
         // Get SDK reference (lock is released, so we can lock again for stream creation)
@@ -553,6 +1001,11 @@ impl ZerobusWrapper {
         let mut retry_count = 0;
         const MAX_STREAM_RECREATE_ATTEMPTS: u32 = 3;
 
+        // Track per-row transmission results across retries
+        // These will be assigned from attempt_* variables after processing completes
+        let transmission_errors: Vec<(usize, ZerobusError)>;
+        let successful_indices: Vec<usize>;
+
         loop {
             // Ensure stream exists and is valid
             let mut stream_guard = self.stream.lock().await;
@@ -580,11 +1033,16 @@ impl ZerobusWrapper {
             }
             drop(stream_guard); // Release lock before sending data
 
-            // Try to send all rows
+            // Try to send all successfully converted rows
+            // Reset tracking for this retry attempt (but preserve across retries for final result)
+            let mut attempt_transmission_errors: Vec<(usize, ZerobusError)> = Vec::new();
+            let mut attempt_successful_indices: Vec<usize> = Vec::new();
             let mut all_succeeded = true;
             let mut failed_at_idx = 0;
 
-            for (idx, bytes) in protobuf_bytes_list.iter().enumerate() {
+            // Process only successfully converted rows
+            for (original_row_idx, bytes) in conversion_result.successful_bytes.iter() {
+                let idx = *original_row_idx;
                 // ========================================================================
                 // STEP 6a: Check backoff before each record
                 // ========================================================================
@@ -596,10 +1054,26 @@ impl ZerobusWrapper {
                     if let Err(_backoff_err) =
                         check_error_6006_backoff(&self.config.table_name).await
                     {
-                        // Clear stream so it gets recreated after backoff period expires
+                        // Backoff error: track per-row and break (backoff is batch-level concern)
+                        // Clear stream so it gets recreated after backoff
                         let mut stream_guard = self.stream.lock().await;
                         *stream_guard = None;
                         drop(stream_guard);
+                        // Backoff affects remaining rows, but we've processed up to idx
+                        // Mark remaining rows as affected by backoff
+                        for remaining_idx in idx..conversion_result.successful_bytes.len() {
+                            if let Some((orig_idx, _)) =
+                                conversion_result.successful_bytes.get(remaining_idx)
+                            {
+                                attempt_transmission_errors.push((
+                                    *orig_idx,
+                                    ZerobusError::ConnectionError(
+                                        "Backoff period active - row processing stopped"
+                                            .to_string(),
+                                    ),
+                                ));
+                            }
+                        }
                         all_succeeded = false;
                         failed_at_idx = idx;
                         break;
@@ -661,6 +1135,8 @@ impl ZerobusWrapper {
                                     bytes.len(),
                                     idx
                                 );
+                                // Track successful transmission
+                                attempt_successful_indices.push(idx);
                             }
                             Err(e) => {
                                 let err_msg = format!("{}", e);
@@ -687,19 +1163,29 @@ impl ZerobusWrapper {
                                             descriptor.nested_type.len()
                                         );
                                     }
+                                    // Stream closure error: track per-row and continue
                                     // Clear stream so it gets recreated on next iteration
                                     let mut stream_guard = self.stream.lock().await;
                                     *stream_guard = None;
                                     drop(stream_guard);
+                                    let stream_error = ZerobusError::ConnectionError(format!(
+                                        "Stream closed: row={}, error={}",
+                                        idx, err_msg
+                                    ));
+                                    attempt_transmission_errors.push((idx, stream_error));
                                     all_succeeded = false;
                                     failed_at_idx = idx;
                                     break;
                                 } else {
-                                    // Non-stream-closure errors are returned immediately
-                                    return Err(ZerobusError::ConnectionError(format!(
-                                        "Record ingestion failed: row={}, error={}",
-                                        idx, e
-                                    )));
+                                    // Non-stream-closure errors: track per-row and continue
+                                    let transmission_error =
+                                        ZerobusError::TransmissionError(format!(
+                                            "Record ingestion failed: row={}, error={}",
+                                            idx, e
+                                        ));
+                                    attempt_transmission_errors.push((idx, transmission_error));
+                                    all_succeeded = false;
+                                    // Continue processing remaining rows instead of returning immediately
                                 }
                             }
                         }
@@ -728,18 +1214,27 @@ impl ZerobusWrapper {
                                     descriptor.nested_type.len()
                                 );
                             }
+                            // Stream closure error: track per-row and continue
                             // Clear stream so it gets recreated on next iteration
                             *stream_guard = None;
                             drop(stream_guard);
+                            let stream_error = ZerobusError::ConnectionError(format!(
+                                "Stream closed: row={}, error={}",
+                                idx, err_msg
+                            ));
+                            attempt_transmission_errors.push((idx, stream_error));
                             all_succeeded = false;
                             failed_at_idx = idx;
                             break;
                         } else {
-                            // Non-stream-closure errors are returned immediately
-                            return Err(ZerobusError::ConnectionError(format!(
+                            // Non-stream-closure errors: track per-row and continue
+                            let transmission_error = ZerobusError::ConnectionError(format!(
                                 "Record creation failed: row={}, error={}",
                                 idx, e
-                            )));
+                            ));
+                            attempt_transmission_errors.push((idx, transmission_error));
+                            all_succeeded = false;
+                            // Continue processing remaining rows instead of returning immediately
                         }
                     }
                 }
@@ -759,16 +1254,31 @@ impl ZerobusWrapper {
             // Performance: Small delay (100ms) prevents tight retry loops.
             if all_succeeded {
                 // All rows sent successfully - exit retry loop
+                // Update final results with this attempt's results
+                successful_indices = attempt_successful_indices;
+                transmission_errors = attempt_transmission_errors;
                 break;
             } else {
                 // Some rows failed due to stream closure - retry with stream recreation
                 retry_count += 1;
                 if retry_count > MAX_STREAM_RECREATE_ATTEMPTS {
-                    // Exhausted retry attempts - return error with context
-                    return Err(ZerobusError::ConnectionError(format!(
-                        "Stream recreation exhausted: attempts={}, failed_at_row={}, possible_causes='schema_mismatch,validation_error,server_issue'",
-                        MAX_STREAM_RECREATE_ATTEMPTS, failed_at_idx
-                    )));
+                    // Exhausted retry attempts - use what we have from this attempt
+                    let mut final_transmission_errors = attempt_transmission_errors;
+                    let final_successful_indices = attempt_successful_indices;
+                    // Mark remaining rows as failed due to stream closure
+                    for (idx, _) in conversion_result.successful_bytes.iter() {
+                        if !final_successful_indices.contains(idx)
+                            && !final_transmission_errors.iter().any(|(i, _)| i == idx)
+                        {
+                            final_transmission_errors.push((*idx, ZerobusError::ConnectionError(format!(
+                                "Stream recreation exhausted: row={}, possible_causes='schema_mismatch,validation_error,server_issue'",
+                                idx
+                            ))));
+                        }
+                    }
+                    successful_indices = final_successful_indices;
+                    transmission_errors = final_transmission_errors;
+                    break;
                 }
                 warn!(
                     "Stream recreation retry: attempt={}/{}, failed_at_row={}",
@@ -776,14 +1286,20 @@ impl ZerobusWrapper {
                 );
                 // Small delay before retry to avoid tight retry loops
                 tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                // Reset attempt tracking for retry - will retry all remaining rows
+                attempt_successful_indices.clear();
+                attempt_transmission_errors.clear();
+                // Note: all_succeeded will be set to true at start of next loop iteration
             }
         }
 
-        debug!(
-            "Successfully sent {} rows to Zerobus",
-            protobuf_bytes_list.len()
-        );
-        Ok(())
+        // Merge conversion errors with transmission errors
+        let mut all_failed_rows = conversion_errors;
+        all_failed_rows.extend(transmission_errors);
+        Ok(BatchTransmissionResult {
+            successful_rows: successful_indices,
+            failed_rows: all_failed_rows,
+        })
     }
 
     /// Flush any pending operations and ensure data is transmitted

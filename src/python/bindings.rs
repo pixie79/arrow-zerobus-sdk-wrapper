@@ -16,6 +16,7 @@ use arrow::record_batch::RecordBatch;
 use pyo3::exceptions::{PyException, PyNotImplementedError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyModule};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -499,6 +500,200 @@ impl PyTransmissionResult {
     pub fn batch_size_bytes(&self) -> usize {
         self.inner.batch_size_bytes
     }
+
+    /// Get failed rows with their errors
+    ///
+    /// Returns a list of tuples (row_index, error_message) for rows that failed.
+    /// Returns None if all rows succeeded.
+    #[getter]
+    pub fn failed_rows(&self) -> Option<Vec<(usize, String)>> {
+        self.inner.failed_rows.as_ref().map(|rows| {
+            rows.iter()
+                .map(|(idx, error)| (*idx, error.to_string()))
+                .collect()
+        })
+    }
+
+    /// Get indices of successfully written rows
+    ///
+    /// Returns a list of row indices that were successfully written.
+    /// Returns None if all rows failed.
+    #[getter]
+    pub fn successful_rows(&self) -> Option<Vec<usize>> {
+        self.inner.successful_rows.clone()
+    }
+
+    /// Get total number of rows in the batch
+    #[getter]
+    pub fn total_rows(&self) -> usize {
+        self.inner.total_rows
+    }
+
+    /// Get count of successfully written rows
+    #[getter]
+    pub fn successful_count(&self) -> usize {
+        self.inner.successful_count
+    }
+
+    /// Get count of failed rows
+    #[getter]
+    pub fn failed_count(&self) -> usize {
+        self.inner.failed_count
+    }
+
+    /// Get indices of failed rows
+    ///
+    /// Returns a list of row indices that failed, or empty list if none failed.
+    pub fn get_failed_row_indices(&self) -> Vec<usize> {
+        self.inner.get_failed_row_indices()
+    }
+
+    /// Get indices of successful rows
+    ///
+    /// Returns a list of row indices that succeeded, or empty list if none succeeded.
+    pub fn get_successful_row_indices(&self) -> Vec<usize> {
+        self.inner.get_successful_row_indices()
+    }
+
+    /// Extract a RecordBatch containing only the failed rows from the original batch
+    ///
+    /// Args:
+    ///     original_batch: The original PyArrow RecordBatch that was sent
+    ///
+    /// Returns:
+    ///     PyArrow RecordBatch containing only the failed rows, or None if there are no failed rows.
+    ///     Rows are extracted in the order they appear in failed_rows.
+    pub fn extract_failed_batch(
+        &self,
+        py: Python,
+        original_batch: PyObject,
+    ) -> PyResult<Option<PyObject>> {
+        let rust_batch = pyarrow_to_rust_batch(py, original_batch)?;
+
+        match self.inner.extract_failed_batch(&rust_batch) {
+            Some(batch) => {
+                // Convert Rust RecordBatch back to PyArrow RecordBatch
+                let py_batch = rust_batch_to_pyarrow(py, &batch)?;
+                Ok(Some(py_batch))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Extract a RecordBatch containing only the successful rows from the original batch
+    ///
+    /// Args:
+    ///     original_batch: The original PyArrow RecordBatch that was sent
+    ///
+    /// Returns:
+    ///     PyArrow RecordBatch containing only the successful rows, or None if there are no successful rows.
+    ///     Rows are extracted in the order they appear in successful_rows.
+    pub fn extract_successful_batch(
+        &self,
+        py: Python,
+        original_batch: PyObject,
+    ) -> PyResult<Option<PyObject>> {
+        let rust_batch = pyarrow_to_rust_batch(py, original_batch)?;
+
+        match self.inner.extract_successful_batch(&rust_batch) {
+            Some(batch) => {
+                // Convert Rust RecordBatch back to PyArrow RecordBatch
+                let py_batch = rust_batch_to_pyarrow(py, &batch)?;
+                Ok(Some(py_batch))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get indices of failed rows filtered by error type
+    ///
+    /// Args:
+    ///     error_type: String representing the error type to filter by
+    ///                 (e.g., "ConversionError", "TransmissionError", "ConnectionError")
+    ///
+    /// Returns:
+    ///     List of row indices for failed rows that match the error type.
+    pub fn get_failed_row_indices_by_error_type(&self, error_type: &str) -> Vec<usize> {
+        self.inner
+            .get_failed_row_indices_by_error_type(|error| match error_type {
+                "ConversionError" => matches!(error, ZerobusError::ConversionError(_)),
+                "TransmissionError" => matches!(error, ZerobusError::TransmissionError(_)),
+                "ConnectionError" => matches!(error, ZerobusError::ConnectionError(_)),
+                "AuthenticationError" => matches!(error, ZerobusError::AuthenticationError(_)),
+                "ConfigurationError" => matches!(error, ZerobusError::ConfigurationError(_)),
+                "RetryExhausted" => matches!(error, ZerobusError::RetryExhausted(_)),
+                "TokenRefreshError" => matches!(error, ZerobusError::TokenRefreshError(_)),
+                _ => false,
+            })
+    }
+
+    /// Check if this result represents a partial success (some rows succeeded, some failed)
+    ///
+    /// Returns:
+    ///     True if there are both successful and failed rows.
+    pub fn is_partial_success(&self) -> bool {
+        self.inner.is_partial_success()
+    }
+
+    /// Check if there are any failed rows
+    ///
+    /// Returns:
+    ///     True if failed_rows contains any entries.
+    pub fn has_failed_rows(&self) -> bool {
+        self.inner.has_failed_rows()
+    }
+
+    /// Check if there are any successful rows
+    ///
+    /// Returns:
+    ///     True if successful_rows contains any entries.
+    pub fn has_successful_rows(&self) -> bool {
+        self.inner.has_successful_rows()
+    }
+
+    /// Group failed rows by error type
+    ///
+    /// Returns:
+    ///     Dictionary mapping error type names to lists of row indices.
+    pub fn group_errors_by_type(&self) -> HashMap<String, Vec<usize>> {
+        self.inner.group_errors_by_type()
+    }
+
+    /// Get error statistics for this transmission result
+    ///
+    /// Returns:
+    ///     Dictionary containing error statistics including:
+    ///     - total_rows: Total number of rows
+    ///     - successful_count: Number of successful rows
+    ///     - failed_count: Number of failed rows
+    ///     - success_rate: Success rate (0.0 to 1.0)
+    ///     - failure_rate: Failure rate (0.0 to 1.0)
+    ///     - error_type_counts: Dictionary mapping error types to counts
+    pub fn get_error_statistics(&self, py: Python) -> PyResult<PyObject> {
+        let stats = self.inner.get_error_statistics();
+        let dict = PyDict::new(py);
+        dict.set_item("total_rows", stats.total_rows)?;
+        dict.set_item("successful_count", stats.successful_count)?;
+        dict.set_item("failed_count", stats.failed_count)?;
+        dict.set_item("success_rate", stats.success_rate)?;
+        dict.set_item("failure_rate", stats.failure_rate)?;
+
+        let error_type_counts = PyDict::new(py);
+        for (error_type, count) in stats.error_type_counts {
+            error_type_counts.set_item(error_type, count)?;
+        }
+        dict.set_item("error_type_counts", error_type_counts)?;
+
+        Ok(dict.to_object(py))
+    }
+
+    /// Get all error messages from failed rows
+    ///
+    /// Returns:
+    ///     List of error message strings for all failed rows.
+    pub fn get_error_messages(&self) -> Vec<String> {
+        self.inner.get_error_messages()
+    }
 }
 
 /// Python wrapper for ZerobusWrapper
@@ -825,4 +1020,40 @@ fn pyarrow_array_to_rust_array(
             data_type
         ))),
     }
+}
+
+/// Convert Rust RecordBatch to PyArrow RecordBatch
+///
+/// Uses Arrow IPC serialization as an efficient intermediate format.
+/// Serializes the Rust RecordBatch to IPC format, then deserializes it in Python.
+fn rust_batch_to_pyarrow(py: Python, batch: &RecordBatch) -> PyResult<PyObject> {
+    use arrow::ipc::writer::StreamWriter;
+    use pyo3::types::PyBytes;
+    use std::io::Cursor;
+
+    // Serialize Rust RecordBatch to IPC format
+    let mut buffer = Vec::new();
+    let cursor = Cursor::new(&mut buffer);
+    let mut writer = StreamWriter::try_new(cursor, &batch.schema())
+        .map_err(|e| PyException::new_err(format!("Failed to create IPC writer: {}", e)))?;
+
+    writer
+        .write(batch)
+        .map_err(|e| PyException::new_err(format!("Failed to write RecordBatch: {}", e)))?;
+
+    writer
+        .finish()
+        .map_err(|e| PyException::new_err(format!("Failed to finish IPC writer: {}", e)))?;
+
+    // Import PyArrow module
+    let pyarrow = PyModule::import(py, "pyarrow")?;
+
+    // Get RecordBatch class
+    let record_batch_class = pyarrow.getattr("RecordBatch")?;
+
+    // Deserialize IPC bytes in Python using PyArrow
+    let ipc_bytes = PyBytes::new(py, &buffer);
+    let py_batch = record_batch_class.call_method1("from_pybytes", (ipc_bytes,))?;
+
+    Ok(py_batch.to_object(py))
 }

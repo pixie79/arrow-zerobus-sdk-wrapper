@@ -5,6 +5,8 @@ Auto-generated from all feature plans. Last updated: 2025-11-23
 ## Active Technologies
 - Rust 1.75+ (edition 2021), Python 3.11+ for bindings (003-zerobus-writer-disabled)
 - Local file system for debug output (already implemented, no changes needed) (003-zerobus-writer-disabled)
+- Rust edition 2021 (latest stable) (004-per-row-errors)
+- N/A (in-memory data structures) (004-per-row-errors)
 
 - Rust 1.75+ (edition 2021), Python 3.8+ for bindings (001-zerobus-wrapper)
 
@@ -24,6 +26,7 @@ cd src [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLO
 Rust 1.75+ (edition 2021), Python 3.8+ for bindings: Follow standard conventions
 
 ## Recent Changes
+- 004-per-row-errors: Added Rust edition 2021 (latest stable)
 - 003-zerobus-writer-disabled: Added Rust 1.75+ (edition 2021), Python 3.11+ for bindings
 
 - 001-zerobus-wrapper: Added Rust 1.75+ (edition 2021), Python 3.8+ for bindings

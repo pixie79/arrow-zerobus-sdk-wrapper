@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2025-12-11
+
+### Added
+- **feat**: Per-row error tracking - `TransmissionResult` now includes per-row error information enabling partial batch success handling
+- **feat**: Per-row error fields - Added `failed_rows`, `successful_rows`, `total_rows`, `successful_count`, `failed_count` to `TransmissionResult`
+- **feat**: Quarantine workflow helpers - Methods to extract failed/successful batches: `extract_failed_batch()`, `extract_successful_batch()`
+- **feat**: Error analysis helpers - `group_errors_by_type()`, `get_error_statistics()`, `get_error_messages()` for pattern analysis
+- **feat**: Error type filtering - `get_failed_row_indices_by_error_type()` to filter failed rows by error type
+- **feat**: Partial batch success - Support for batches where some rows succeed and others fail
+- **feat**: Enhanced error messages - Error messages now include field names, row indices, and detailed context
+- **feat**: Python bindings for per-row errors - All new methods available in Python API
+- **feat**: `ErrorStatistics` struct - Comprehensive error statistics with success/failure rates and error type counts
+- **tests**: Comprehensive test suite for per-row error handling (unit, integration, contract tests)
+- **docs**: Updated quickstart guide with per-row error examples and patterns
+- **docs**: Enhanced rustdoc documentation with examples and edge case descriptions
+
+### Changed
+- **breaking**: `record_batch_to_protobuf_bytes()` now returns `ProtobufConversionResult` instead of `Result<Vec<Vec<u8>>, ZerobusError>` to support per-row error collection
+- **enhancement**: `TransmissionResult` now tracks per-row success/failure instead of batch-level only
+- **enhancement**: Error messages include more context (field names, row indices) for better debugging
+- **chore**: Updated `otlp-arrow-library` dependency to tag `v0.6.0`
+
+### Fixed
+- **fix**: Empty batch handling - Properly handles batches with 0 rows
+- **fix**: Batch-level vs per-row error distinction - Clear separation between batch-level errors (auth, connection) and per-row errors
+
+---
+
 ## [0.5.0] - 2025-12-11
 
 ### Added
