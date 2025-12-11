@@ -268,7 +268,7 @@ impl PyWrapperConfiguration {
     ///     observability_enabled: Enable OpenTelemetry observability
     ///     observability_config: OpenTelemetry configuration dict
     ///     debug_enabled: Enable debug file output (required when zerobus_writer_disabled is True)
-    ///     debug_output_dir: Output directory for debug files
+    ///     debug_output_dir: Output directory for debug files (required when debug_enabled is True)
     ///     debug_flush_interval_secs: Debug file flush interval in seconds
     ///     debug_max_file_size: Maximum debug file size before rotation
     ///     retry_max_attempts: Maximum retry attempts for transient failures
@@ -278,6 +278,7 @@ impl PyWrapperConfiguration {
     ///
     /// Raises:
     ///     ZerobusError: If configuration is invalid or initialization fails
+    ///         - ConfigurationError if debug_enabled is True but debug_output_dir is None
     ///         - ConfigurationError if zerobus_writer_disabled is True but debug_enabled is False
     #[new]
     #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000, zerobus_writer_disabled=false))]
@@ -354,6 +355,13 @@ impl PyWrapperConfiguration {
                 config = config.with_debug_output(PathBuf::from(output_dir));
                 config.debug_flush_interval_secs = debug_flush_interval_secs;
                 config.debug_max_file_size = debug_max_file_size;
+            } else {
+                // If debug_enabled is True but debug_output_dir is None, raise an error
+                // This prevents silent failure where debug_enabled is ignored
+                return Err(PyException::new_err(
+                    "debug_output_dir is required when debug_enabled is True. \
+                    Either provide debug_output_dir or set debug_enabled=False.",
+                ));
             }
         }
 

@@ -273,23 +273,25 @@ def test_wrapper_initialization_with_options():
 
     # Basic configuration
     try:
-        wrapper1 = ZerobusWrapper(
+        config1 = WrapperConfiguration(
             endpoint="https://test.cloud.databricks.com",
             table_name="test_table",
         )
+        wrapper1 = ZerobusWrapper(config1)
         assert wrapper1 is not None
     except Exception:
         pass  # Expected if credentials required
 
     # With credentials
     try:
-        wrapper2 = ZerobusWrapper(
+        config2 = WrapperConfiguration(
             endpoint="https://test.cloud.databricks.com",
             table_name="test_table",
             client_id="test_id",
             client_secret="test_secret",
             unity_catalog_url="https://unity-catalog-url",
         )
+        wrapper2 = ZerobusWrapper(config2)
         assert wrapper2 is not None
     except Exception:
         pass  # Expected without real credentials
@@ -349,10 +351,11 @@ async def test_async_send_batch():
     # Test that send_batch can be called asynchronously
 
     try:
-        wrapper = ZerobusWrapper(
+        config = WrapperConfiguration(
             endpoint="https://test.cloud.databricks.com",
             table_name="test_table",
         )
+        wrapper = ZerobusWrapper(config)
 
         # Create test batch
         schema = pa.schema(

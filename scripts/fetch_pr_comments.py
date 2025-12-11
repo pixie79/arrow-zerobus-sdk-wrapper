@@ -27,11 +27,21 @@ import csv
 import json as json_lib
 import os
 import re
+import ssl
 import sys
 from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
+
+# Try to use certifi for SSL certificates (more reliable on macOS)
+try:
+    import certifi
+
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    # Fallback to default SSL context if certifi is not available
+    SSL_CONTEXT = ssl.create_default_context()
 
 
 class GitHubPRComments:
@@ -78,15 +88,29 @@ class GitHubPRComments:
             req = Request(url, data=req_data, headers=self.headers, method="POST")
 
             try:
-                with urlopen(req) as response:
+                with urlopen(req, context=SSL_CONTEXT) as response:
                     status_code = response.getcode()
                     headers = dict(response.headers)
 
                     if status_code == 401:
                         print(
-                            "Error: Authentication failed. Check your GitHub token.",
+                            "Error: Authentication failed (HTTP 401).",
                             file=sys.stderr,
                         )
+                        if not self.token:
+                            print(
+                                "No GitHub token provided. Set GITHUB_TOKEN environment variable or use --token flag.",
+                                file=sys.stderr,
+                            )
+                            print(
+                                "Create a token at: https://github.com/settings/tokens",
+                                file=sys.stderr,
+                            )
+                        else:
+                            print(
+                                "GitHub token is invalid or expired. Check your token or create a new one at: https://github.com/settings/tokens",
+                                file=sys.stderr,
+                            )
                         sys.exit(1)
                     elif status_code == 404:
                         print(
@@ -135,15 +159,29 @@ class GitHubPRComments:
             req = Request(url, headers=self.headers)
 
             try:
-                with urlopen(req) as response:
+                with urlopen(req, context=SSL_CONTEXT) as response:
                     status_code = response.getcode()
                     headers = dict(response.headers)
 
                     if status_code == 401:
                         print(
-                            "Error: Authentication failed. Check your GitHub token.",
+                            "Error: Authentication failed (HTTP 401).",
                             file=sys.stderr,
                         )
+                        if not self.token:
+                            print(
+                                "No GitHub token provided. Set GITHUB_TOKEN environment variable or use --token flag.",
+                                file=sys.stderr,
+                            )
+                            print(
+                                "Create a token at: https://github.com/settings/tokens",
+                                file=sys.stderr,
+                            )
+                        else:
+                            print(
+                                "GitHub token is invalid or expired. Check your token or create a new one at: https://github.com/settings/tokens",
+                                file=sys.stderr,
+                            )
                         sys.exit(1)
                     elif status_code == 404:
                         print(
@@ -203,14 +241,55 @@ class GitHubPRComments:
         req = Request(url, headers=self.headers)
 
         try:
-            with urlopen(req) as response:
-                if response.getcode() != 200:
-                    print(f"Error: HTTP {response.getcode()}", file=sys.stderr)
+            with urlopen(req, context=SSL_CONTEXT) as response:
+                status_code = response.getcode()
+                if status_code == 401:
+                    print(
+                        "Error: Authentication failed (HTTP 401).",
+                        file=sys.stderr,
+                    )
+                    if not self.token:
+                        print(
+                            "No GitHub token provided. Set GITHUB_TOKEN environment variable or use --token flag.",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "Create a token at: https://github.com/settings/tokens",
+                            file=sys.stderr,
+                        )
+                    else:
+                        print(
+                            "GitHub token is invalid or expired. Check your token or create a new one at: https://github.com/settings/tokens",
+                            file=sys.stderr,
+                        )
+                    sys.exit(1)
+                elif status_code != 200:
+                    print(f"Error: HTTP {status_code}", file=sys.stderr)
                     sys.exit(1)
                 data = response.read().decode("utf-8")
                 return json_lib.loads(data)
         except HTTPError as e:
-            print(f"Error: HTTP {e.code} - {e.reason}", file=sys.stderr)
+            if e.code == 401:
+                print(
+                    "Error: Authentication failed (HTTP 401).",
+                    file=sys.stderr,
+                )
+                if not self.token:
+                    print(
+                        "No GitHub token provided. Set GITHUB_TOKEN environment variable or use --token flag.",
+                        file=sys.stderr,
+                    )
+                    print(
+                        "Create a token at: https://github.com/settings/tokens",
+                        file=sys.stderr,
+                    )
+                else:
+                    print(
+                        "GitHub token is invalid or expired. Check your token or create a new one at: https://github.com/settings/tokens",
+                        file=sys.stderr,
+                    )
+            else:
+                print(f"Error: HTTP {e.code} - {e.reason}", file=sys.stderr)
             sys.exit(1)
         except URLError as e:
             print(f"Error: {e.reason}", file=sys.stderr)
@@ -279,6 +358,69 @@ class GitHubPRComments:
         endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{pr_number}/reviews"
         return self._make_request(endpoint)
 
+    def get_comment_by_id(self, comment_id: int, comment_type: str) -> Optional[Dict]:
+        """
+        Get a specific comment by ID and type.
+
+        Args:
+            comment_id: Comment ID
+            comment_type: Type of comment ("issue", "review_comment", or "review")
+
+        Returns:
+            Comment dictionary or None if not found
+        """
+        try:
+            if comment_type == "issue":
+                endpoint = (
+                    f"/repos/{self.owner}/{self.repo}/issues/comments/{comment_id}"
+                )
+            elif comment_type == "review_comment":
+                endpoint = (
+                    f"/repos/{self.owner}/{self.repo}/pulls/comments/{comment_id}"
+                )
+            elif comment_type == "review":
+                # Reviews don't have a direct endpoint by ID, need to fetch all and filter
+                # For now, we'll try to get it from the PR reviews
+                # This is a limitation - we'd need the PR number to fetch reviews
+                print(
+                    "Warning: Getting review by ID requires PR number. Use fetch_all_comments() instead.",
+                    file=sys.stderr,
+                )
+                return None
+            else:
+                print(
+                    f"Error: Unknown comment type: {comment_type}",
+                    file=sys.stderr,
+                )
+                return None
+
+            url = f"{self.base_url}{endpoint}"
+            req = Request(url, headers=self.headers)
+
+            with urlopen(req, context=SSL_CONTEXT) as response:
+                if response.getcode() == 200:
+                    data = response.read().decode("utf-8")
+                    return json_lib.loads(data)
+                elif response.getcode() == 404:
+                    return None
+                else:
+                    print(
+                        f"Error: HTTP {response.getcode()}",
+                        file=sys.stderr,
+                    )
+                    return None
+        except HTTPError as e:
+            if e.code == 404:
+                return None
+            print(f"Error: HTTP {e.code} - {e.reason}", file=sys.stderr)
+            return None
+        except URLError as e:
+            print(f"Error: {e.reason}", file=sys.stderr)
+            return None
+        except Exception as e:
+            print(f"Error: {e}", file=sys.stderr)
+            return None
+
     def _get_resolved_comment_ids(self, pr_number: int) -> set:
         """
         Get set of resolved review comment IDs using GraphQL API.
@@ -336,7 +478,7 @@ class GitHubPRComments:
                 graphql_url, data=payload, headers=graphql_headers, method="POST"
             )
 
-            with urlopen(req) as response:
+            with urlopen(req, context=SSL_CONTEXT) as response:
                 if response.getcode() != 200:
                     error_body = response.read().decode("utf-8")
                     print(
@@ -716,7 +858,7 @@ class GitHubPRComments:
         pr_info = data["pr_info"]
         issue_comments = data["issue_comments"]
         review_comments = data["review_comments"]
-        # reviews = data.get("reviews", [])  # Unused, kept for future use
+        # Note: reviews are intentionally not included in table view (see summary comment below)
 
         # PR Header
         print(f"\n{'=' * 100}")

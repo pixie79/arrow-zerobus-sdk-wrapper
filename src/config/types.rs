@@ -317,7 +317,7 @@ impl WrapperConfiguration {
         // Validate writer disabled mode requires debug enabled
         if self.zerobus_writer_disabled && !self.debug_enabled {
             return Err(ZerobusError::ConfigurationError(
-                "debug_enabled must be true when zerobus_writer_disabled is true".to_string(),
+                "debug_enabled must be true when zerobus_writer_disabled is true. Use with_debug_output() to enable debug output.".to_string(),
             ));
         }
 

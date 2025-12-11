@@ -345,37 +345,40 @@ impl ZerobusWrapper {
         batch: RecordBatch,
         descriptor: Option<prost_types::DescriptorProto>,
     ) -> Result<(), ZerobusError> {
-        // 1. Ensure SDK is initialized
-        {
-            let mut sdk_guard = self.sdk.lock().await;
-            if sdk_guard.is_none() {
-                let unity_catalog_url = self
-                    .config
-                    .unity_catalog_url
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ZerobusError::ConfigurationError(
-                            "unity_catalog_url is required".to_string(),
-                        )
-                    })?
-                    .clone();
+        // CRITICAL: Check if writer is disabled FIRST, before any SDK initialization or credential access
+        // This prevents errors when credentials are not provided (which is allowed when writer is disabled)
+        if self.config.zerobus_writer_disabled {
+            // When writer is disabled, we still perform conversion and write debug files,
+            // but skip all SDK calls. This enables local development and testing without credentials.
+            debug!(
+                "Writer disabled mode enabled - skipping SDK initialization and Zerobus SDK calls"
+            );
+            // Continue to conversion and debug file writing below, then return early
+        } else {
+            // 1. Ensure SDK is initialized (only when writer is NOT disabled)
+            {
+                let mut sdk_guard = self.sdk.lock().await;
+                if sdk_guard.is_none() {
+                    let unity_catalog_url = self
+                        .config
+                        .unity_catalog_url
+                        .as_ref()
+                        .ok_or_else(|| {
+                            ZerobusError::ConfigurationError(
+                                "unity_catalog_url is required".to_string(),
+                            )
+                        })?
+                        .clone();
 
-                let sdk = crate::wrapper::zerobus::create_sdk(
-                    self.config.zerobus_endpoint.clone(),
-                    unity_catalog_url,
-                )
-                .await?;
-                *sdk_guard = Some(sdk);
+                    let sdk = crate::wrapper::zerobus::create_sdk(
+                        self.config.zerobus_endpoint.clone(),
+                        unity_catalog_url,
+                    )
+                    .await?;
+                    *sdk_guard = Some(sdk);
+                }
             }
         }
-
-        // Get SDK reference (lock is released, so we can lock again for stream creation)
-        let sdk_guard = self.sdk.lock().await;
-        let sdk = sdk_guard.as_ref().ok_or_else(|| {
-            ZerobusError::ConfigurationError(
-                "SDK not initialized - this should not happen".to_string(),
-            )
-        })?;
 
         // 2. Get Protobuf descriptor (use provided one or generate from Arrow schema)
         let descriptor = if let Some(provided_descriptor) = descriptor {
@@ -472,6 +475,15 @@ impl ZerobusWrapper {
             );
             return Ok(());
         }
+
+        // Get SDK reference (lock is released, so we can lock again for stream creation)
+        // This is safe because we only reach here when writer is NOT disabled, so SDK was initialized above
+        let sdk_guard = self.sdk.lock().await;
+        let sdk = sdk_guard.as_ref().ok_or_else(|| {
+            ZerobusError::ConfigurationError(
+                "SDK not initialized - this should not happen".to_string(),
+            )
+        })?;
 
         // 4. Ensure stream is created
         // Expose secrets only when needed for API calls
