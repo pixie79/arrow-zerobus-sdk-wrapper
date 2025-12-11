@@ -54,6 +54,44 @@ pub fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
     }
 }
 
+/// Parse error string to ZerobusError
+/// 
+/// Handles strings like "ConversionError: message" or plain "message"
+fn parse_error_string(error_msg: String) -> ZerobusError {
+    if error_msg.starts_with("ConversionError:") {
+        ZerobusError::ConversionError(
+            error_msg.strip_prefix("ConversionError:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("TransmissionError:") {
+        ZerobusError::TransmissionError(
+            error_msg.strip_prefix("TransmissionError:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("ConnectionError:") {
+        ZerobusError::ConnectionError(
+            error_msg.strip_prefix("ConnectionError:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("AuthenticationError:") {
+        ZerobusError::AuthenticationError(
+            error_msg.strip_prefix("AuthenticationError:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("ConfigurationError:") {
+        ZerobusError::ConfigurationError(
+            error_msg.strip_prefix("ConfigurationError:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("RetryExhausted:") {
+        ZerobusError::RetryExhausted(
+            error_msg.strip_prefix("RetryExhausted:").unwrap().trim().to_string(),
+        )
+    } else if error_msg.starts_with("TokenRefreshError:") {
+        ZerobusError::TokenRefreshError(
+            error_msg.strip_prefix("TokenRefreshError:").unwrap().trim().to_string(),
+        )
+    } else {
+        // Default to ConversionError if no prefix
+        ZerobusError::ConversionError(error_msg)
+    }
+}
+
 // Exception classes
 // Note: In PyO3, all custom exceptions must extend PyException directly.
 // We cannot use a custom base class (PyZerobusError) for other exceptions
@@ -476,6 +514,74 @@ pub struct PyTransmissionResult {
 
 #[pymethods]
 impl PyTransmissionResult {
+    /// Create a new TransmissionResult instance
+    ///
+    /// Args:
+    ///     success: Whether transmission succeeded
+    ///     error: Optional batch-level error message (string)
+    ///     attempts: Number of retry attempts made
+    ///     latency_ms: Optional transmission latency in milliseconds
+    ///     batch_size_bytes: Size of transmitted batch in bytes
+    ///     failed_rows: Optional list of (row_index, error_message) tuples for failed rows
+    ///     successful_rows: Optional list of row indices that succeeded
+    ///     total_rows: Total number of rows in the batch
+    ///     successful_count: Number of rows that succeeded
+    ///     failed_count: Number of rows that failed
+    ///     message: Optional message (ignored, kept for backward compatibility)
+    #[new]
+    #[allow(clippy::too_many_arguments)]
+    #[pyo3(signature = (
+        success,
+        error=None,
+        attempts=1,
+        latency_ms=None,
+        batch_size_bytes=0,
+        failed_rows=None,
+        successful_rows=None,
+        total_rows=0,
+        successful_count=0,
+        failed_count=0,
+        message=None
+    ))]
+    pub fn new(
+        success: bool,
+        error: Option<String>,
+        attempts: u32,
+        latency_ms: Option<u64>,
+        batch_size_bytes: usize,
+        failed_rows: Option<Vec<(usize, String)>>,
+        successful_rows: Option<Vec<usize>>,
+        total_rows: usize,
+        successful_count: usize,
+        failed_count: usize,
+        message: Option<String>,
+    ) -> Self {
+        // Convert string error messages to ZerobusError
+        let rust_failed_rows = failed_rows.map(|rows| {
+            rows.into_iter()
+                .map(|(idx, error_msg)| (idx, parse_error_string(error_msg)))
+                .collect()
+        });
+
+        // Convert string error to ZerobusError
+        let rust_error = error.map(parse_error_string);
+
+        Self {
+            inner: TransmissionResult {
+                success,
+                error: rust_error,
+                attempts,
+                latency_ms,
+                batch_size_bytes,
+                failed_rows: rust_failed_rows,
+                successful_rows,
+                total_rows,
+                successful_count,
+                failed_count,
+            },
+        }
+    }
+
     #[getter]
     pub fn success(&self) -> bool {
         self.inner.success
