@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2025-12-11
+
+### Added
+- **feat**: Automatic failure rate backoff - Client-side backoff mechanism with jitter that triggers when network/transmission failure rate exceeds 1%
+- **feat**: Per-table failure rate tracking - Failure rate statistics tracked independently per table with sliding window (5 minutes)
+- **feat**: Batched future collection - Improved throughput by collecting multiple `ingest_record()` futures and awaiting them in batches (1000 records or 10MB)
+- **feat**: Arrow IPC Stream format support - Switched debug Arrow files to `.arrows` format (Arrow IPC Stream) for better compatibility with tools like DuckDB
+- **feat**: Record-based file rotation - Both Arrow and Protobuf debug files now rotate every 1000 records (configurable via `ROTATION_BATCH_SIZE`)
+- **tests**: Comprehensive test coverage for failure rate backoff feature (integration tests covering triggering, blocking, recovery, isolation, error counting)
+
+### Changed
+- **enhancement**: Improved batch transmission performance - Records are now queued concurrently and flushed periodically instead of sequentially
+- **enhancement**: Enhanced public `flush()` method - Now includes explicit Zerobus stream flushing to ensure buffered records are transmitted
+- **enhancement**: Better file handle management - Proper file closing and rotation for debug files with mutable path tracking
+
+### Fixed
+- **fix**: Critical data loss issue - Added mandatory `stream.flush()` calls after batch transmission to ensure buffered records are sent to Databricks (resolves "thousands of records dropping" issue)
+- **fix**: Debug Arrow files not readable by DuckDB - Switched from Arrow IPC File format to Arrow IPC Stream format (`.arrows` extension) with proper file finalization (resolves #11)
+- **fix**: Debug file rotation - Both Arrow and Protobuf debug files now properly rotate based on record count with correct file closing
+
+---
+
 ## [0.6.0] - 2025-12-11
 
 ### Added

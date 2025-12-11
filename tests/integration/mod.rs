@@ -14,4 +14,5 @@ mod test_quickstart_validation;
 mod test_per_row_errors;
 mod test_quarantine_workflow;
 mod test_error_analysis;
+mod test_failure_rate_backoff;
 
