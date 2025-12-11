@@ -14,9 +14,8 @@ tokio-util = "0.7"
 futures = "0.3"
 
 # Databricks Zerobus SDK
-# Using release version v0.1.1 from GitHub
-# Repository: https://github.com/databricks/zerobus-sdk-rs
-databricks-zerobus-ingest-sdk = { git = "https://github.com/databricks/zerobus-sdk-rs.git", tag = "v0.1.1", package = "databricks-zerobus-ingest-sdk" }
+# Using published crate version from crates.io
+databricks-zerobus-ingest-sdk = "=0.1.0"
 
 # Arrow
 arrow = "57"
