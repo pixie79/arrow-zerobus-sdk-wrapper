@@ -57,6 +57,36 @@ pub struct ZerobusWrapper {
 }
 
 impl ZerobusWrapper {
+    /// Validate and normalize the Zerobus endpoint URL.
+    ///
+    /// # Arguments
+    ///
+    /// * `endpoint` - Raw endpoint string from configuration
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` with normalized endpoint, or `Err(ZerobusError)` if validation fails.
+    fn validate_and_normalize_endpoint(endpoint: &str) -> Result<String, ZerobusError> {
+        let normalized_endpoint = endpoint.trim().to_string();
+
+        if normalized_endpoint.is_empty() {
+            return Err(ZerobusError::ConfigurationError(
+                "zerobus_endpoint cannot be empty".to_string(),
+            ));
+        }
+
+        if !normalized_endpoint.starts_with("https://")
+            && !normalized_endpoint.starts_with("http://")
+        {
+            return Err(ZerobusError::ConfigurationError(format!(
+                "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
+                normalized_endpoint
+            )));
+        }
+
+        Ok(normalized_endpoint)
+    }
+
     /// Create a new ZerobusWrapper with the provided configuration
     ///
     /// # Arguments
@@ -89,6 +119,9 @@ impl ZerobusWrapper {
         // Validate configuration
         config.validate()?;
 
+        // Validate and normalize endpoint (required for both enabled and disabled modes)
+        let normalized_endpoint = Self::validate_and_normalize_endpoint(&config.zerobus_endpoint)?;
+
         // Skip credential validation if writer is disabled (credentials optional in this mode)
         if !config.zerobus_writer_disabled {
             // Get required OAuth credentials
@@ -111,45 +144,10 @@ impl ZerobusWrapper {
                 ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
             })?;
 
-            // Normalize and validate zerobus endpoint
-            let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
-
-            if normalized_endpoint.is_empty() {
-                return Err(ZerobusError::ConfigurationError(
-                    "zerobus_endpoint cannot be empty".to_string(),
-                ));
-            }
-
-            if !normalized_endpoint.starts_with("https://")
-                && !normalized_endpoint.starts_with("http://")
-            {
-                return Err(ZerobusError::ConfigurationError(format!(
-                    "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
-                    normalized_endpoint
-                )));
-            }
-
             info!("Zerobus endpoint: {}", normalized_endpoint);
             info!("Unity Catalog URL: {}", unity_catalog_url);
         } else {
             // When writer is disabled, we still validate endpoint format but don't require credentials
-            let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
-
-            if normalized_endpoint.is_empty() {
-                return Err(ZerobusError::ConfigurationError(
-                    "zerobus_endpoint cannot be empty".to_string(),
-                ));
-            }
-
-            if !normalized_endpoint.starts_with("https://")
-                && !normalized_endpoint.starts_with("http://")
-            {
-                return Err(ZerobusError::ConfigurationError(format!(
-                    "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
-                    normalized_endpoint
-                )));
-            }
-
             info!(
                 "Zerobus endpoint: {} (writer disabled mode)",
                 normalized_endpoint

@@ -84,9 +84,9 @@ EOF
 echo "📝 Created test file: $TEMP_TEST_FILE"
 echo "🔨 Compiling test..."
 rustc --edition 2021 --crate-type bin "$TEMP_TEST_FILE" \
-    --extern arrow_zerobus_sdk_wrapper=target/debug/libarrow_zerobus_sdk_wrapper.rlib \
-    --extern tokio=target/debug/deps/libtokio-*.rlib \
-    --extern arrow=target/debug/deps/libarrow-*.rlib \
+    --extern "arrow_zerobus_sdk_wrapper=target/debug/libarrow_zerobus_sdk_wrapper.rlib" \
+    --extern "tokio=target/debug/deps/libtokio-*.rlib" \
+    --extern "arrow=target/debug/deps/libarrow-*.rlib" \
     2>&1 | head -20 || {
     echo "⚠️  Direct compilation test skipped (requires complex dependencies)"
     echo "✅ Using cargo test instead..."

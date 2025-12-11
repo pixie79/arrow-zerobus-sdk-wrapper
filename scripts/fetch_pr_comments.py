@@ -35,6 +35,9 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 # Try to use certifi for SSL certificates (more reliable on macOS)
+# certifi provides Mozilla's carefully curated collection of Root Certificates,
+# which is more reliable than system certificates on macOS, especially in virtual environments.
+# If certifi is not installed, we fall back to the default SSL context.
 try:
     import certifi
 

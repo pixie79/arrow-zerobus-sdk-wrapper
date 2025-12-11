@@ -303,9 +303,16 @@ fn test_config_validate_writer_disabled_requires_debug_enabled() {
     config.zerobus_writer_disabled = true;
     config.debug_enabled = false;
 
-    assert!(config.validate().is_err());
-    let err = config.validate().unwrap_err();
-    assert!(err.to_string().contains("debug_enabled must be true when zerobus_writer_disabled is true"));
+    let validation_result = config.validate();
+    assert!(validation_result.is_err());
+    let err = validation_result.unwrap_err();
+    // Use starts_with for more specific assertion to avoid false positives
+    assert!(
+        err.to_string()
+            .starts_with("debug_enabled must be true when zerobus_writer_disabled is true"),
+        "Error message should start with expected text, got: {}",
+        err.to_string()
+    );
 }
 
 #[test]

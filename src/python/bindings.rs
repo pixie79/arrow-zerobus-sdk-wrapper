@@ -358,9 +358,10 @@ impl PyWrapperConfiguration {
             } else {
                 // If debug_enabled is True but debug_output_dir is None, raise an error
                 // This prevents silent failure where debug_enabled is ignored
-                return Err(PyException::new_err(
+                return Err(PyConfigurationError::new_err(
                     "debug_output_dir is required when debug_enabled is True. \
-                    Either provide debug_output_dir or set debug_enabled=False.",
+                    Either provide debug_output_dir or set debug_enabled=False."
+                        .to_string(),
                 ));
             }
         }
