@@ -735,6 +735,13 @@ impl ZerobusWrapper {
                 // Sort failed rows by index for consistency
                 all_failed_rows.sort_by_key(|(idx, _)| *idx);
 
+                // Update failure rate tracking (only counts network/transmission errors)
+                crate::wrapper::zerobus::update_failure_rate(
+                    &self.config.table_name,
+                    total_rows,
+                    &all_failed_rows,
+                );
+
                 Ok(TransmissionResult {
                     success: overall_success,
                     error: None, // No batch-level error, only per-row errors
@@ -951,18 +958,20 @@ impl ZerobusWrapper {
             .clone();
 
         // ========================================================================
-        // STEP 5: Check error 6006 backoff BEFORE attempting any writes
+        // STEP 5: Check backoff conditions BEFORE attempting any writes
         // ========================================================================
         // CRITICAL: Check backoff BEFORE attempting writes, even if stream exists.
         // This prevents writes during backoff period even if stream was created before
-        // backoff started. Error 6006 indicates pipeline is temporarily blocked by
-        // Databricks due to repeated failures.
+        // backoff started. We check for:
+        // 1. Error 6006 backoff (server-initiated, pipeline blocked)
+        // 2. High failure rate backoff (client-initiated, >1% failure rate)
         //
         // Edge case: Backoff can start during batch processing, so we check again
         // before each record in the loop below.
         {
-            use crate::wrapper::zerobus::check_error_6006_backoff;
+            use crate::wrapper::zerobus::{check_error_6006_backoff, check_failure_rate_backoff};
             check_error_6006_backoff(&self.config.table_name).await?;
+            check_failure_rate_backoff(&self.config.table_name).await?;
         }
 
         // ========================================================================
@@ -1003,8 +1012,8 @@ impl ZerobusWrapper {
 
         // Track per-row transmission results across retries
         // These will be assigned from attempt_* variables after processing completes
-        let transmission_errors: Vec<(usize, ZerobusError)>;
-        let successful_indices: Vec<usize>;
+        let mut transmission_errors: Vec<(usize, ZerobusError)> = Vec::new();
+        let mut successful_indices: Vec<usize> = Vec::new();
 
         loop {
             // Ensure stream exists and is valid
@@ -1040,6 +1049,22 @@ impl ZerobusWrapper {
             let mut all_succeeded = true;
             let mut failed_at_idx = 0;
 
+            // Batch futures for better throughput: collect futures and await in batches
+            // This allows the SDK to queue multiple records before flushing, improving performance
+            const BATCH_SIZE: usize = 1000; // Flush every 1000 records
+            const BATCH_SIZE_BYTES: usize = 10 * 1024 * 1024; // Or every 10MB
+                                                              // Store futures with their row indices - using a type-erased future
+            type IngestFuture = std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = Result<i64, databricks_zerobus_ingest_sdk::ZerobusError>,
+                        > + Send,
+                >,
+            >;
+            let mut pending_futures: Vec<(usize, IngestFuture)> = Vec::new();
+            let mut total_bytes_buffered = 0usize;
+            let mut should_break_outer = false; // Track if we need to break outer retry loop
+
             // Process only successfully converted rows
             for (original_row_idx, bytes) in conversion_result.successful_bytes.iter() {
                 let idx = *original_row_idx;
@@ -1047,10 +1072,12 @@ impl ZerobusWrapper {
                 // STEP 6a: Check backoff before each record
                 // ========================================================================
                 // Edge case: Backoff can start during batch processing (e.g., another thread
-                // encountered error 6006). We check before each record to prevent writes
+                // encountered error 6006 or high failure rate). We check before each record to prevent writes
                 // during backoff period.
                 {
-                    use crate::wrapper::zerobus::check_error_6006_backoff;
+                    use crate::wrapper::zerobus::{
+                        check_error_6006_backoff, check_failure_rate_backoff,
+                    };
                     if let Err(_backoff_err) =
                         check_error_6006_backoff(&self.config.table_name).await
                     {
@@ -1069,6 +1096,34 @@ impl ZerobusWrapper {
                                     *orig_idx,
                                     ZerobusError::ConnectionError(
                                         "Backoff period active - row processing stopped"
+                                            .to_string(),
+                                    ),
+                                ));
+                            }
+                        }
+                        all_succeeded = false;
+                        failed_at_idx = idx;
+                        break;
+                    }
+                    // Also check failure rate backoff
+                    if let Err(_backoff_err) =
+                        check_failure_rate_backoff(&self.config.table_name).await
+                    {
+                        // Backoff error: track per-row and break (backoff is batch-level concern)
+                        // Clear stream so it gets recreated after backoff
+                        let mut stream_guard = self.stream.lock().await;
+                        *stream_guard = None;
+                        drop(stream_guard);
+                        // Backoff affects remaining rows, but we've processed up to idx
+                        // Mark remaining rows as affected by backoff
+                        for remaining_idx in idx..conversion_result.successful_bytes.len() {
+                            if let Some((orig_idx, _)) =
+                                conversion_result.successful_bytes.get(remaining_idx)
+                            {
+                                attempt_transmission_errors.push((
+                                    *orig_idx,
+                                    ZerobusError::ConnectionError(
+                                        "High failure rate backoff active - row processing stopped"
                                             .to_string(),
                                     ),
                                 ));
@@ -1113,80 +1168,117 @@ impl ZerobusWrapper {
                 })?;
 
                 // ========================================================================
-                // STEP 6c: Send bytes to Zerobus stream
+                // STEP 6c: Send bytes to Zerobus stream (batched for performance)
                 // ========================================================================
-                // The Zerobus SDK's ingest_record returns a Future that must be awaited.
-                // We release the lock before awaiting to avoid blocking other operations.
+                // The Zerobus SDK's ingest_record returns a Future that resolves when acknowledged.
+                // We collect futures and await them in batches for better throughput.
                 //
                 // Error handling:
                 // - Stream closed errors: Clear stream, mark failure, break loop to retry
-                // - Other errors: Return immediately (non-retryable)
+                // - Other errors: Track per-row and continue
                 // - First record failures: Log detailed diagnostics for schema issues
                 match stream.ingest_record(bytes.clone()).await {
                     Ok(ingest_future) => {
-                        // Release lock before awaiting to avoid blocking other operations
+                        // Release lock before collecting future to avoid blocking
                         drop(stream_guard);
 
-                        // Await the inner future to get the final result
-                        match ingest_future.await {
-                            Ok(_) => {
-                                debug!(
-                                    "✅ Successfully sent {} bytes to Zerobus stream (row {})",
-                                    bytes.len(),
-                                    idx
-                                );
-                                // Track successful transmission
-                                attempt_successful_indices.push(idx);
-                            }
-                            Err(e) => {
-                                let err_msg = format!("{}", e);
-                                // Check if stream is closed (indicates server-side closure)
-                                if err_msg.contains("Stream is closed")
-                                    || err_msg.contains("Stream closed")
-                                {
-                                    // Standardized error logging with context
-                                    let is_first = idx == 0;
-                                    error!(
-                                        "Stream closed: row={}, first_record={}, error={}",
-                                        idx, is_first, err_msg
-                                    );
-                                    if is_first {
-                                        // First record failure indicates schema/validation issues
-                                        error!("Diagnostics: This is the FIRST record - stream closed immediately after creation");
-                                        error!("Possible causes:");
-                                        error!("  1. Schema mismatch between descriptor and table");
-                                        error!("  2. Validation error on first record");
-                                        error!("  3. Table schema not yet propagated");
+                        // Collect future for batch processing
+                        // Box the future to store in Vec (type erasure for different future types)
+                        pending_futures.push((idx, Box::pin(ingest_future)));
+                        total_bytes_buffered += bytes.len();
+
+                        // Periodically flush and await futures to manage memory and ensure progress
+                        if pending_futures.len() >= BATCH_SIZE
+                            || total_bytes_buffered >= BATCH_SIZE_BYTES
+                        {
+                            // Flush stream to send buffered records
+                            {
+                                let mut stream_guard = self.stream.lock().await;
+                                if let Some(ref mut stream) = *stream_guard {
+                                    if let Err(e) = stream.flush().await {
                                         error!(
-                                            "Descriptor info: fields={}, nested_types={}",
-                                            descriptor.field.len(),
-                                            descriptor.nested_type.len()
+                                            "Failed to flush Zerobus stream during batch: {}",
+                                            e
                                         );
+                                        // Mark all pending futures as failed
+                                        for (pending_idx, _) in pending_futures.drain(..) {
+                                            attempt_transmission_errors.push((
+                                                pending_idx,
+                                                ZerobusError::ConnectionError(format!(
+                                                    "Flush failed during batch processing: {}",
+                                                    e
+                                                )),
+                                            ));
+                                        }
+                                        all_succeeded = false;
+                                        failed_at_idx = idx;
+                                        break;
                                     }
-                                    // Stream closure error: track per-row and continue
-                                    // Clear stream so it gets recreated on next iteration
-                                    let mut stream_guard = self.stream.lock().await;
-                                    *stream_guard = None;
-                                    drop(stream_guard);
-                                    let stream_error = ZerobusError::ConnectionError(format!(
-                                        "Stream closed: row={}, error={}",
-                                        idx, err_msg
-                                    ));
-                                    attempt_transmission_errors.push((idx, stream_error));
-                                    all_succeeded = false;
-                                    failed_at_idx = idx;
-                                    break;
-                                } else {
-                                    // Non-stream-closure errors: track per-row and continue
-                                    let transmission_error =
-                                        ZerobusError::TransmissionError(format!(
-                                            "Record ingestion failed: row={}, error={}",
-                                            idx, e
-                                        ));
-                                    attempt_transmission_errors.push((idx, transmission_error));
-                                    all_succeeded = false;
-                                    // Continue processing remaining rows instead of returning immediately
                                 }
+                            }
+
+                            // Await all pending futures and track results
+                            for (pending_idx, mut future) in pending_futures.drain(..) {
+                                match future.as_mut().await {
+                                    Ok(_ack_id) => {
+                                        debug!(
+                                            "✅ Successfully sent record to Zerobus stream (row {}, ack_id={})",
+                                            pending_idx, _ack_id
+                                        );
+                                        attempt_successful_indices.push(pending_idx);
+                                    }
+                                    Err(e) => {
+                                        let err_msg = format!("{}", e);
+                                        // Check if stream is closed
+                                        if err_msg.contains("Stream is closed")
+                                            || err_msg.contains("Stream closed")
+                                        {
+                                            let is_first = pending_idx == 0;
+                                            error!(
+                                                "Stream closed: row={}, first_record={}, error={}",
+                                                pending_idx, is_first, err_msg
+                                            );
+                                            if is_first {
+                                                error!("Diagnostics: Stream closed during batch processing");
+                                                error!("Possible causes:");
+                                                error!("  1. Schema mismatch between descriptor and table");
+                                                error!("  2. Validation error");
+                                                error!("  3. Server-side issue");
+                                            }
+                                            // Clear stream and break to retry
+                                            let mut stream_guard = self.stream.lock().await;
+                                            *stream_guard = None;
+                                            drop(stream_guard);
+                                            attempt_transmission_errors.push((
+                                                pending_idx,
+                                                ZerobusError::ConnectionError(format!(
+                                                    "Stream closed: row={}, error={}",
+                                                    pending_idx, err_msg
+                                                )),
+                                            ));
+                                            all_succeeded = false;
+                                            failed_at_idx = pending_idx;
+                                            break;
+                                        } else {
+                                            // Non-stream-closure errors
+                                            attempt_transmission_errors.push((
+                                                pending_idx,
+                                                ZerobusError::TransmissionError(format!(
+                                                    "Record ingestion failed: row={}, error={}",
+                                                    pending_idx, e
+                                                )),
+                                            ));
+                                            all_succeeded = false;
+                                        }
+                                    }
+                                }
+                            }
+                            total_bytes_buffered = 0;
+
+                            // If we broke due to stream closure, mark for outer loop break
+                            // But continue to process remaining pending futures below
+                            if !all_succeeded && failed_at_idx > 0 {
+                                should_break_outer = true;
                             }
                         }
                     }
@@ -1225,6 +1317,8 @@ impl ZerobusWrapper {
                             attempt_transmission_errors.push((idx, stream_error));
                             all_succeeded = false;
                             failed_at_idx = idx;
+                            // Mark for outer loop break, but continue to process pending futures
+                            should_break_outer = true;
                             break;
                         } else {
                             // Non-stream-closure errors: track per-row and continue
@@ -1240,6 +1334,93 @@ impl ZerobusWrapper {
                 }
             }
 
+            // CRITICAL: Flush and await any remaining pending futures before proceeding
+            // This ensures all queued records are sent and acknowledged, even if we broke early
+            if !pending_futures.is_empty() {
+                // Always flush remaining records before awaiting acknowledgments
+                // This ensures records are sent even if we broke early due to errors
+                {
+                    let mut stream_guard = self.stream.lock().await;
+                    if let Some(ref mut stream) = *stream_guard {
+                        // Attempt to flush - if stream is closed, this will fail but we still want to await futures
+                        match stream.flush().await {
+                            Ok(_) => {
+                                debug!(
+                                    "✅ Flushed Zerobus stream for {} remaining pending futures",
+                                    pending_futures.len()
+                                );
+                            }
+                            Err(e) => {
+                                warn!("Failed to flush Zerobus stream for remaining records (stream may be closed): {}", e);
+                                // Don't mark futures as failed yet - await them to get actual acknowledgment status
+                                // The stream might be closed, but some records may have been sent before closure
+                            }
+                        }
+                    } else {
+                        warn!("Stream is None when trying to flush remaining records - records may be lost");
+                        // Mark all pending futures as failed since we can't flush
+                        for (pending_idx, _) in pending_futures.drain(..) {
+                            attempt_transmission_errors.push((
+                                pending_idx,
+                                ZerobusError::ConnectionError(
+                                    "Stream was closed before flushing remaining records"
+                                        .to_string(),
+                                ),
+                            ));
+                        }
+                        all_succeeded = false;
+                    }
+                }
+
+                // CRITICAL: Always await all pending futures to get acknowledgment status
+                // Even if stream is closed, we need to know which records succeeded/failed
+                for (pending_idx, mut future) in pending_futures.drain(..) {
+                    match future.as_mut().await {
+                        Ok(_ack_id) => {
+                            debug!(
+                                "✅ Successfully acknowledged record (row {}, ack_id={})",
+                                pending_idx, _ack_id
+                            );
+                            attempt_successful_indices.push(pending_idx);
+                        }
+                        Err(e) => {
+                            let err_msg = format!("{}", e);
+                            if err_msg.contains("Stream is closed")
+                                || err_msg.contains("Stream closed")
+                            {
+                                // Stream was closed - clear it and mark as failed
+                                let mut stream_guard = self.stream.lock().await;
+                                *stream_guard = None;
+                                drop(stream_guard);
+                                attempt_transmission_errors.push((
+                                    pending_idx,
+                                    ZerobusError::ConnectionError(format!(
+                                        "Stream closed before acknowledgment: row={}, error={}",
+                                        pending_idx, err_msg
+                                    )),
+                                ));
+                                all_succeeded = false;
+                            } else {
+                                // Other errors (network, timeout, etc.)
+                                attempt_transmission_errors.push((
+                                    pending_idx,
+                                    ZerobusError::TransmissionError(format!(
+                                        "Record acknowledgment failed: row={}, error={}",
+                                        pending_idx, e
+                                    )),
+                                ));
+                                all_succeeded = false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If we broke early due to stream closure, exit the retry loop
+            if should_break_outer {
+                break;
+            }
+
             // ========================================================================
             // STEP 6d: Handle retry logic
             // ========================================================================
@@ -1253,7 +1434,23 @@ impl ZerobusWrapper {
             //
             // Performance: Small delay (100ms) prevents tight retry loops.
             if all_succeeded {
-                // All rows sent successfully - exit retry loop
+                // All rows sent successfully - flush stream to ensure records are transmitted
+                // CRITICAL: The SDK buffers records internally and requires flush() to send them
+                {
+                    let mut stream_guard = self.stream.lock().await;
+                    if let Some(ref mut stream) = *stream_guard {
+                        if let Err(e) = stream.flush().await {
+                            error!("Failed to flush Zerobus stream after batch: {}", e);
+                            // Don't fail the entire batch if flush fails - records may still be in transit
+                            // But log the error for monitoring
+                        } else {
+                            debug!(
+                                "✅ Flushed Zerobus stream after sending {} records",
+                                attempt_successful_indices.len()
+                            );
+                        }
+                    }
+                }
                 // Update final results with this attempt's results
                 successful_indices = attempt_successful_indices;
                 transmission_errors = attempt_transmission_errors;
@@ -1308,6 +1505,18 @@ impl ZerobusWrapper {
     ///
     /// Returns error if flush operation fails.
     pub async fn flush(&self) -> Result<(), ZerobusError> {
+        // CRITICAL: Flush Zerobus stream to ensure buffered records are sent
+        // The SDK buffers records internally and requires flush() to transmit them
+        {
+            let mut stream_guard = self.stream.lock().await;
+            if let Some(ref mut stream) = *stream_guard {
+                stream.flush().await.map_err(|e| {
+                    ZerobusError::ConnectionError(format!("Failed to flush Zerobus stream: {}", e))
+                })?;
+                debug!("✅ Flushed Zerobus stream");
+            }
+        }
+
         // Flush debug files if enabled
         if let Some(ref debug_writer) = self.debug_writer {
             if let Err(e) = debug_writer.flush().await {
