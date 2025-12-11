@@ -9,11 +9,8 @@ import pyarrow as pa
 
 # Skip all tests if the module is not available
 try:
-    import arrow_zerobus_sdk_wrapper
     from arrow_zerobus_sdk_wrapper import (
         TransmissionResult,
-        ZerobusError,
-        WrapperConfiguration,
     )
 except ImportError:
     pytestmark = pytest.mark.skip("arrow_zerobus_sdk_wrapper not available")

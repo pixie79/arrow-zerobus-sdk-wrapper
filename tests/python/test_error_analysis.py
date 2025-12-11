@@ -8,10 +8,8 @@ import pytest
 
 # Skip all tests if the module is not available
 try:
-    import arrow_zerobus_sdk_wrapper
     from arrow_zerobus_sdk_wrapper import (
         TransmissionResult,
-        ZerobusError,
     )
 except ImportError:
     pytestmark = pytest.mark.skip("arrow_zerobus_sdk_wrapper not available")
