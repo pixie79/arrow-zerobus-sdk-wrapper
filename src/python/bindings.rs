@@ -755,7 +755,8 @@ fn pyarrow_array_to_rust_array(
     use std::sync::Arc;
 
     // Get array length
-    let len = array_obj.getattr("len")?.extract::<usize>()?;
+    // PyArrow arrays support __len__() method, not a len attribute
+    let len = array_obj.call_method0("__len__")?.extract::<usize>()?;
 
     match data_type {
         DataType::Int64 => {
