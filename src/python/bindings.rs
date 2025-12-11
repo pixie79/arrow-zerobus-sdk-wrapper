@@ -558,7 +558,7 @@ impl PyTransmissionResult {
     ///     message: Optional message (ignored, kept for backward compatibility)
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (success, *, error=None, attempts=1, latency_ms=None, batch_size_bytes=0, failed_rows=None, successful_rows=None, total_rows=0, successful_count=0, failed_count=0, _message=None))]
+    #[pyo3(signature = (success, *, error=None, attempts=1, latency_ms=None, batch_size_bytes=0, failed_rows=None, successful_rows=None, total_rows=0, successful_count=0, failed_count=0, message=None))]
     pub fn new(
         success: bool,
         error: Option<String>,
@@ -570,7 +570,7 @@ impl PyTransmissionResult {
         total_rows: usize,
         successful_count: usize,
         failed_count: usize,
-        _message: Option<String>,
+        #[allow(unused_variables)] message: Option<String>,
     ) -> Self {
         // Convert string error messages to ZerobusError
         let rust_failed_rows = failed_rows.map(|rows| {
