@@ -751,9 +751,11 @@ class GitHubPRComments:
                 [
                     pr_info["number"],
                     pr_info["title"],
-                    pr_info["user"]["login"]
-                    if isinstance(pr_info["user"], dict)
-                    else "Unknown",
+                    (
+                        pr_info["user"]["login"]
+                        if isinstance(pr_info["user"], dict)
+                        else "Unknown"
+                    ),
                     pr_info["state"],
                     pr_info["created_at"],
                     pr_info["html_url"],
@@ -771,9 +773,11 @@ class GitHubPRComments:
                         [
                             "issue_comment",
                             comment.get("id", ""),
-                            comment.get("user", {}).get("login", "Unknown")
-                            if isinstance(comment.get("user"), dict)
-                            else "Unknown",
+                            (
+                                comment.get("user", {}).get("login", "Unknown")
+                                if isinstance(comment.get("user"), dict)
+                                else "Unknown"
+                            ),
                             comment.get("created_at", ""),
                             comment.get("body", "")
                             .replace("\n", " ")
@@ -802,9 +806,11 @@ class GitHubPRComments:
                         [
                             "review_comment",
                             comment.get("id", ""),
-                            comment.get("user", {}).get("login", "Unknown")
-                            if isinstance(comment.get("user"), dict)
-                            else "Unknown",
+                            (
+                                comment.get("user", {}).get("login", "Unknown")
+                                if isinstance(comment.get("user"), dict)
+                                else "Unknown"
+                            ),
                             comment.get("created_at", ""),
                             comment.get("path", ""),
                             comment.get("line", ""),
@@ -834,9 +840,11 @@ class GitHubPRComments:
                         [
                             "review",
                             review.get("id", ""),
-                            review.get("user", {}).get("login", "Unknown")
-                            if isinstance(review.get("user"), dict)
-                            else "Unknown",
+                            (
+                                review.get("user", {}).get("login", "Unknown")
+                                if isinstance(review.get("user"), dict)
+                                else "Unknown"
+                            ),
                             review.get("state", ""),
                             review.get("submitted_at") or review.get("created_at", ""),
                             review.get("body", "").replace("\n", " ").replace("\r", ""),
@@ -1174,9 +1182,11 @@ def main():
             "pr": {
                 "number": data["pr_info"]["number"],
                 "title": data["pr_info"]["title"],
-                "author": data["pr_info"]["user"]["login"]
-                if isinstance(data["pr_info"]["user"], dict)
-                else "Unknown",
+                "author": (
+                    data["pr_info"]["user"]["login"]
+                    if isinstance(data["pr_info"]["user"], dict)
+                    else "Unknown"
+                ),
                 "state": data["pr_info"]["state"],
                 "created_at": data["pr_info"]["created_at"],
                 "url": data["pr_info"]["html_url"],
@@ -1185,9 +1195,11 @@ def main():
                 "issue_comments": [
                     {
                         "id": c.get("id"),
-                        "user": c.get("user", {}).get("login", "Unknown")
-                        if isinstance(c.get("user"), dict)
-                        else "Unknown",
+                        "user": (
+                            c.get("user", {}).get("login", "Unknown")
+                            if isinstance(c.get("user"), dict)
+                            else "Unknown"
+                        ),
                         "created_at": c.get("created_at"),
                         "body": c.get("body", ""),
                         "url": c.get("html_url"),
@@ -1197,9 +1209,11 @@ def main():
                 "review_comments": [
                     {
                         "id": c.get("id"),
-                        "user": c.get("user", {}).get("login", "Unknown")
-                        if isinstance(c.get("user"), dict)
-                        else "Unknown",
+                        "user": (
+                            c.get("user", {}).get("login", "Unknown")
+                            if isinstance(c.get("user"), dict)
+                            else "Unknown"
+                        ),
                         "created_at": c.get("created_at"),
                         "path": c.get("path"),
                         "line": c.get("line"),
@@ -1212,9 +1226,11 @@ def main():
                 "reviews": [
                     {
                         "id": r.get("id"),
-                        "user": r.get("user", {}).get("login", "Unknown")
-                        if isinstance(r.get("user"), dict)
-                        else "Unknown",
+                        "user": (
+                            r.get("user", {}).get("login", "Unknown")
+                            if isinstance(r.get("user"), dict)
+                            else "Unknown"
+                        ),
                         "state": r.get("state"),
                         "created_at": r.get("created_at"),
                         "body": r.get("body", ""),

@@ -65,18 +65,24 @@ echo ""
 echo "🔍 Checking Python formatting..."
 if git diff --cached --name-only | grep -qE '\.(py)$'; then
     if command -v python3 &> /dev/null; then
-        # Check if black is available
+        # Check if black is available - FAIL if not available (required for CI)
         if python3 -m black --version > /dev/null 2>&1; then
-            if ! python3 -m black --check tests/python/ scripts/*.py 2>/dev/null; then
+            if ! python3 -m black --check tests/python/ scripts/*.py 2>&1; then
                 echo "❌ Python formatting check failed"
                 echo "   Run: python3 -m black tests/python/ scripts/*.py"
                 FAILED=1
             fi
         else
-            echo "⚠️  black not installed, skipping Python formatting check"
+            echo "❌ ERROR: black is not installed but Python files are staged"
+            echo "   Install with: pip install black"
+            echo "   Or run: python3 -m pip install black"
+            echo "   This check is required for CI - pre-commit hook will fail"
+            FAILED=1
         fi
     else
-        echo "⚠️  python3 not found, skipping Python formatting check"
+        echo "❌ ERROR: python3 not found but Python files are staged"
+        echo "   Python formatting check is required for CI"
+        FAILED=1
     fi
 else
     echo "ℹ️  No Python files changed, skipping Python formatting check"

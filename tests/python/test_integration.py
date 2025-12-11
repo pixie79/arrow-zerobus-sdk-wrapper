@@ -233,9 +233,9 @@ def test_debug_enabled_requires_output_dir():
 
     # Verify error message mentions debug_output_dir requirement
     error_msg = str(exc_info.value)
-    assert "debug_output_dir" in error_msg.lower() or "output" in error_msg.lower(), (
-        f"Error message should mention debug_output_dir requirement, got: {error_msg}"
-    )
+    assert (
+        "debug_output_dir" in error_msg.lower() or "output" in error_msg.lower()
+    ), f"Error message should mention debug_output_dir requirement, got: {error_msg}"
 
     # Should succeed: debug_enabled=True with debug_output_dir provided
     config = WrapperConfiguration(
@@ -244,7 +244,9 @@ def test_debug_enabled_requires_output_dir():
         debug_enabled=True,
         debug_output_dir="./test_debug",
     )
-    assert config.debug_enabled is True, "debug_enabled should be True when output_dir is provided"
+    assert (
+        config.debug_enabled is True
+    ), "debug_enabled should be True when output_dir is provided"
 
     # Should succeed: debug_enabled=False (default) without output_dir
     config = WrapperConfiguration(
@@ -253,7 +255,9 @@ def test_debug_enabled_requires_output_dir():
         debug_enabled=False,
         debug_output_dir=None,
     )
-    assert config.debug_enabled is False, "debug_enabled should be False when not enabled"
+    assert (
+        config.debug_enabled is False
+    ), "debug_enabled should be False when not enabled"
 
 
 @pytest.mark.asyncio
