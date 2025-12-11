@@ -779,7 +779,15 @@ fn pyarrow_array_to_rust_array(
                     if val.is_none() {
                         Ok(None)
                     } else {
-                        Ok(Some(val.extract::<String>()?))
+                        // PyArrow returns StringScalar objects, not plain strings
+                        // Use as_py() method to convert to Python string, then extract
+                        let py_str = if val.hasattr("as_py")? {
+                            val.call_method0("as_py")?
+                        } else {
+                            // Fallback: convert to string representation
+                            val.call_method0("__str__")?
+                        };
+                        Ok(Some(py_str.extract::<String>()?))
                     }
                 })
                 .collect::<PyResult<Vec<_>>>()?;
