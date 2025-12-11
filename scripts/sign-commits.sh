@@ -1,63 +1,70 @@
 #!/bin/bash
-# Script to GPG sign all unsigned commits on the current branch
-# Run this after your GPG card is connected and unlocked
+# Script to GPG sign commits that haven't been pushed yet
+# Usage: ./scripts/sign-commits.sh [branch-name]
+# If branch-name is not provided, uses current branch
 
 set -e
 
-echo "Checking for unsigned commits..."
+BRANCH="${1:-$(git branch --show-current)}"
+REMOTE_BRANCH="origin/$BRANCH"
 
-# Check if GPG card is available
-if ! gpg --card-status &>/dev/null; then
-    echo "Error: GPG card is not available"
-    echo "Please connect and unlock your GPG card, then run this script again"
-    exit 1
+# Check if remote branch exists
+if ! git rev-parse --verify "$REMOTE_BRANCH" >/dev/null 2>&1; then
+    echo "⚠️  Remote branch $REMOTE_BRANCH does not exist."
+    echo "   All local commits will be signed."
+    COMMITS_TO_SIGN=$(git rev-list --count HEAD ^origin/main 2>/dev/null || git rev-list --count HEAD)
+else
+    COMMITS_TO_SIGN=$(git rev-list --count HEAD ^"$REMOTE_BRANCH" 2>/dev/null || echo "0")
 fi
 
-# Get the base branch (usually main or master)
-BASE_BRANCH=$(git remote show origin | grep "HEAD branch" | awk '{print $NF}')
-if [ -z "$BASE_BRANCH" ]; then
-    BASE_BRANCH="main"
-fi
-
-echo "Base branch: $BASE_BRANCH"
-echo ""
-
-# Get list of unsigned commits
-UNSIGNED_COMMITS=$(git log --format="%H %G? %s" origin/$BASE_BRANCH..HEAD | grep " N " | awk '{print $1}')
-
-if [ -z "$UNSIGNED_COMMITS" ]; then
-    echo "✓ All commits are already signed!"
+if [ "$COMMITS_TO_SIGN" -eq "0" ]; then
+    echo "✅ No commits to sign - branch is up to date with remote"
     exit 0
 fi
 
-echo "Found unsigned commits:"
-git log --format="  %h %s" origin/$BASE_BRANCH..HEAD | grep -E "$(echo $UNSIGNED_COMMITS | tr ' ' '|')"
+echo "📝 Found $COMMITS_TO_SIGN commit(s) to sign on branch: $BRANCH"
+
+# Check if GPG is configured
+if ! git config user.signingkey >/dev/null 2>&1; then
+    echo "❌ Error: GPG signing key not configured"
+    echo "   Run: git config user.signingkey <your-gpg-key-id>"
+    exit 1
+fi
+
+echo "🔐 GPG signing key: $(git config user.signingkey)"
+
+# Create rebase script
+REBASE_SCRIPT=$(mktemp)
+trap "rm -f $REBASE_SCRIPT" EXIT
+
+# Generate exec commands for each commit
+for i in $(seq 1 "$COMMITS_TO_SIGN"); do
+    echo "exec git commit --amend --no-edit -S" >> "$REBASE_SCRIPT"
+done
+
+# Perform interactive rebase
+if [ -n "$REMOTE_BRANCH" ] && git rev-parse --verify "$REMOTE_BRANCH" >/dev/null 2>&1; then
+    BASE="$REMOTE_BRANCH"
+else
+    # Find the base branch (main or master)
+    if git rev-parse --verify origin/main >/dev/null 2>&1; then
+        BASE="origin/main"
+    elif git rev-parse --verify origin/master >/dev/null 2>&1; then
+        BASE="origin/master"
+    else
+        echo "❌ Error: Could not find base branch (origin/main or origin/master)"
+        exit 1
+    fi
+fi
+
+echo "🔄 Rebasing commits from $BASE..."
+echo "   You will be prompted for your GPG PIN $COMMITS_TO_SIGN time(s)"
+
+# Use GIT_SEQUENCE_EDITOR to automatically apply the exec commands
+export GIT_SEQUENCE_EDITOR="cat $REBASE_SCRIPT >"
+git rebase -i "$BASE"
+
+echo "✅ All commits have been signed!"
 echo ""
-
-# Count commits
-COMMIT_COUNT=$(echo "$UNSIGNED_COMMITS" | wc -l | tr -d ' ')
-echo "Signing $COMMIT_COUNT commit(s)..."
-echo ""
-
-# Sign commits using interactive rebase
-# We'll use rebase to sign each commit
-FIRST_UNSIGNED=$(echo "$UNSIGNED_COMMITS" | tail -1)
-BASE_COMMIT=$(git merge-base HEAD origin/$BASE_BRANCH)
-
-echo "Starting interactive rebase to sign commits..."
-echo "You will be prompted to sign each commit."
-echo ""
-
-# Use rebase to sign commits
-git rebase --exec 'git commit --amend --no-edit -S' -i "$BASE_COMMIT"
-
-echo ""
-echo "✓ All commits signed successfully!"
-echo ""
-echo "Verifying signatures..."
-git log --show-signature origin/$BASE_BRANCH..HEAD | grep -E "(Good signature|gpg: Signature made)"
-
-echo ""
-echo "To push the signed commits:"
-echo "  git push origin $(git branch --show-current) --force-with-lease"
-
+echo "📤 To push the signed commits, run:"
+echo "   git push --force-with-lease origin $BRANCH"
