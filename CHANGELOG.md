@@ -5,7 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2025-12-11
+
+### Added
+- **feat**: Zerobus writer disabled mode - Add `zerobus_writer_disabled` configuration option to disable Zerobus SDK transmission while maintaining debug file output
+- **feat**: Configuration validation for writer disabled mode - Requires `debug_enabled` to be true when `zerobus_writer_disabled` is true
+- **feat**: Optional credentials when writer disabled - Credentials become optional when `zerobus_writer_disabled` is true, enabling local development without Databricks access
+- **feat**: Early return in batch sending - When writer disabled, `send_batch()` skips all SDK calls and returns success after debug file writing
+- **feat**: Python bindings support for writer disabled mode - `zerobus_writer_disabled` parameter added to `PyWrapperConfiguration`
+- **tests**: Unit tests for configuration validation with writer disabled mode (5 tests)
+- **tests**: Integration tests for debug file writing when writer disabled
+- **tests**: Integration tests for success return when writer disabled
+- **tests**: Integration tests for network verification (no network calls when disabled)
+- **tests**: Integration tests for quickstart validation
+- **tests**: Performance benchmarks for writer disabled mode
+- **docs**: Comprehensive documentation for writer disabled mode in README.md
+- **docs**: Quickstart guide with Rust and Python examples
+- **docs**: Coverage verification reports
+
+### Changed
+- **chore**: Updated GitHub Actions CI workflow to verify formatting and linting for all languages
+- **chore**: Enhanced test coverage verification with cargo-tarpaulin
+- **chore**: Improved Python code formatting and linting compliance
+
+### Fixed
+- **fix**: Python formatting issues in examples and test files
+- **fix**: Python linting issues (unused variables, f-string formatting)
 
 ---
 

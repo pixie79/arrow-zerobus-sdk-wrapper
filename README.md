@@ -10,6 +10,7 @@ Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings. Pro
 - **Token Refresh**: Automatic authentication token refresh for long-running operations
 - **Observability**: OpenTelemetry metrics and traces integration
 - **Debug Output**: Optional Arrow and Protobuf file output for debugging
+- **Writer Disabled Mode**: Disable Zerobus SDK transmission while maintaining debug file output for local development and testing
 - **Thread-Safe**: Concurrent operations from multiple threads/async tasks
 - **Cross-Platform**: Linux, macOS, Windows support
 
@@ -114,6 +115,51 @@ async def main():
 
 asyncio.run(main())
 ```
+
+## Writer Disabled Mode
+
+The wrapper supports a "writer disabled" mode that allows you to test data conversion logic and write debug files without making network calls to Zerobus. This is useful for:
+
+- **Local Development**: Test data transformations without Databricks workspace access
+- **CI/CD Testing**: Validate data format without requiring credentials
+- **Performance Testing**: Benchmark conversion logic without network overhead
+
+### Usage
+
+**Rust:**
+```rust
+use arrow_zerobus_sdk_wrapper::{ZerobusWrapper, WrapperConfiguration};
+use std::path::PathBuf;
+
+let config = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "my_table".to_string(),
+)
+.with_debug_output(PathBuf::from("./debug_output"))
+.with_zerobus_writer_disabled(true);  // Enable disabled mode
+
+let wrapper = ZerobusWrapper::new(config).await?;
+// No credentials required when writer is disabled
+let result = wrapper.send_batch(batch).await?;
+// Debug files written, no network calls made
+```
+
+**Python:**
+```python
+wrapper = ZerobusWrapper(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_enabled=True,
+    debug_output_dir="./debug_output",
+    zerobus_writer_disabled=True,  # Enable disabled mode
+    # No credentials required when writer is disabled
+)
+
+result = await wrapper.send_batch(batch)
+# Debug files written, no network calls made
+```
+
+**Note**: When `zerobus_writer_disabled` is `true`, `debug_enabled` must also be `true`. Credentials are optional when writer is disabled.
 
 ## Building
 
@@ -373,11 +419,46 @@ Alternatively, if you have the Protobuf schema definition, you can use tools lik
 
 For more details, see the [official DuckDB Arrow IPC support documentation](https://duckdb.org/2025/05/23/arrow-ipc-support-in-duckdb).
 
+## Development
+
+### Pre-commit Hooks
+
+The repository includes a pre-commit hook to ensure version consistency across all configuration files. Before each commit, the hook verifies that version numbers match in:
+
+- `Cargo.toml`
+- `pyproject.toml`
+- `CHANGELOG.md` (latest release)
+
+To install the pre-commit hook:
+
+```bash
+./scripts/install_pre_commit_hook.sh
+```
+
+To manually check version consistency:
+
+```bash
+./scripts/check_version.sh
+```
+
+### Version Management
+
+When releasing a new version, ensure all version numbers are updated:
+
+1. Update `Cargo.toml`: `version = "X.Y.Z"`
+2. Update `pyproject.toml`: `version = "X.Y.Z"`
+3. Update `CHANGELOG.md`: Add new release section `## [X.Y.Z] - YYYY-MM-DD`
+
+The pre-commit hook and CI pipeline will verify version consistency automatically.
+
+For more details, see [Version Management Guide](docs/VERSION_MANAGEMENT.md).
+
 ## Documentation
 
 - [API Documentation](docs/api.md)
 - [Quickstart Guide](specs/001-zerobus-wrapper/quickstart.md)
 - [Architecture](docs/architecture.md)
+- [Version Management Guide](docs/VERSION_MANAGEMENT.md)
 
 ## License
 

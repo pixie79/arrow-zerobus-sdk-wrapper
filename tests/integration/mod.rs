@@ -9,4 +9,6 @@ mod test_wrapper_lifecycle;
 mod test_stream_closure_recovery;
 mod test_sdk_reinitialization;
 mod test_network_timeouts;
+mod test_network_verification;
+mod test_quickstart_validation;
 

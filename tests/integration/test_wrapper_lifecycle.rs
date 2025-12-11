@@ -296,3 +296,35 @@ async fn test_wrapper_lifecycle_complete() {
     }
 }
 
+#[tokio::test]
+async fn test_wrapper_initializes_without_credentials_when_writer_disabled() {
+    // Test that wrapper can be initialized without credentials when writer is disabled
+    use tempfile::TempDir;
+    
+    let temp_dir = TempDir::new().unwrap();
+    let debug_output_dir = temp_dir.path().to_path_buf();
+    
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(debug_output_dir)
+    .with_zerobus_writer_disabled(true);
+    // No credentials provided
+
+    let wrapper_result = ZerobusWrapper::new(config).await;
+    
+    // Should succeed without credentials when writer is disabled
+    assert!(wrapper_result.is_ok(), "Wrapper should initialize without credentials when writer disabled");
+    
+    let wrapper = wrapper_result.unwrap();
+    let batch = create_test_batch();
+    
+    // Send batch should succeed (writes debug files, skips SDK calls)
+    let result = wrapper.send_batch(batch).await;
+    assert!(result.is_ok(), "send_batch should succeed when writer disabled");
+    
+    let transmission_result = result.unwrap();
+    assert!(transmission_result.success, "Transmission should indicate success");
+}
+

@@ -257,8 +257,31 @@ pub struct PyWrapperConfiguration {
 #[pymethods]
 #[allow(clippy::too_many_arguments)]
 impl PyWrapperConfiguration {
+    /// Initialize WrapperConfiguration with parameters.
+    ///
+    /// Args:
+    ///     endpoint: Zerobus endpoint URL (required)
+    ///     table_name: Target table name (required)
+    ///     client_id: OAuth2 client ID (optional when zerobus_writer_disabled is True)
+    ///     client_secret: OAuth2 client secret (optional when zerobus_writer_disabled is True)
+    ///     unity_catalog_url: Unity Catalog URL (optional when zerobus_writer_disabled is True)
+    ///     observability_enabled: Enable OpenTelemetry observability
+    ///     observability_config: OpenTelemetry configuration dict
+    ///     debug_enabled: Enable debug file output (required when zerobus_writer_disabled is True)
+    ///     debug_output_dir: Output directory for debug files (required when debug_enabled is True)
+    ///     debug_flush_interval_secs: Debug file flush interval in seconds
+    ///     debug_max_file_size: Maximum debug file size before rotation
+    ///     retry_max_attempts: Maximum retry attempts for transient failures
+    ///     retry_base_delay_ms: Base delay in milliseconds for exponential backoff
+    ///     retry_max_delay_ms: Maximum delay in milliseconds for exponential backoff
+    ///     zerobus_writer_disabled: Disable Zerobus SDK transmission while maintaining debug output
+    ///
+    /// Raises:
+    ///     ZerobusError: If configuration is invalid or initialization fails
+    ///         - ConfigurationError if debug_enabled is True but debug_output_dir is None
+    ///         - ConfigurationError if zerobus_writer_disabled is True but debug_enabled is False
     #[new]
-    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
+    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000, zerobus_writer_disabled=false))]
     pub fn new(
         endpoint: String,
         table_name: String,
@@ -274,6 +297,7 @@ impl PyWrapperConfiguration {
         retry_max_attempts: u32,
         retry_base_delay_ms: u64,
         retry_max_delay_ms: u64,
+        zerobus_writer_disabled: bool,
     ) -> PyResult<Self> {
         let mut config = WrapperConfiguration::new(endpoint, table_name);
 
@@ -331,11 +355,23 @@ impl PyWrapperConfiguration {
                 config = config.with_debug_output(PathBuf::from(output_dir));
                 config.debug_flush_interval_secs = debug_flush_interval_secs;
                 config.debug_max_file_size = debug_max_file_size;
+            } else {
+                // If debug_enabled is True but debug_output_dir is None, raise an error
+                // This prevents silent failure where debug_enabled is ignored
+                return Err(PyConfigurationError::new_err(
+                    "debug_output_dir is required when debug_enabled is True. \
+                    Either provide debug_output_dir or set debug_enabled=False."
+                        .to_string(),
+                ));
             }
         }
 
         config =
             config.with_retry_config(retry_max_attempts, retry_base_delay_ms, retry_max_delay_ms);
+
+        if zerobus_writer_disabled {
+            config = config.with_zerobus_writer_disabled(true);
+        }
 
         Ok(Self { inner: config })
     }
@@ -420,6 +456,11 @@ impl PyWrapperConfiguration {
     #[getter]
     fn observability_enabled(&self) -> bool {
         self.inner.observability_enabled
+    }
+
+    #[getter]
+    fn zerobus_writer_disabled(&self) -> bool {
+        self.inner.zerobus_writer_disabled
     }
 }
 
@@ -644,16 +685,19 @@ fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<R
     use std::sync::Arc;
 
     // Get schema from PyArrow RecordBatch
+    // PyArrow Schema objects are sequences - they support len() and indexing
     let schema_obj = batch_ref.getattr("schema")?;
-    let schema_fields = schema_obj.getattr("fields")?;
-    let num_fields = schema_fields.len()?;
+
+    // Get number of fields using len() method (Schema objects support len())
+    let num_fields = schema_obj.call_method0("__len__")?.extract::<usize>()?;
 
     let mut rust_fields = Vec::new();
     let mut rust_arrays = Vec::new();
 
     // Convert each field and array
+    // PyArrow Schema objects support indexing: schema[i] returns the field
     for i in 0..num_fields {
-        let field_obj = schema_fields.get_item(i)?;
+        let field_obj = schema_obj.get_item(i)?;
         let field_name = field_obj.getattr("name")?.extract::<String>()?;
         let field_type_obj = field_obj.getattr("type")?;
         let field_type_str = format!("{}", field_type_obj);
@@ -712,7 +756,8 @@ fn pyarrow_array_to_rust_array(
     use std::sync::Arc;
 
     // Get array length
-    let len = array_obj.getattr("len")?.extract::<usize>()?;
+    // PyArrow arrays support __len__() method, not a len attribute
+    let len = array_obj.call_method0("__len__")?.extract::<usize>()?;
 
     match data_type {
         DataType::Int64 => {
@@ -735,7 +780,15 @@ fn pyarrow_array_to_rust_array(
                     if val.is_none() {
                         Ok(None)
                     } else {
-                        Ok(Some(val.extract::<String>()?))
+                        // PyArrow returns StringScalar objects, not plain strings
+                        // Use as_py() method to convert to Python string, then extract
+                        let py_str = if val.hasattr("as_py")? {
+                            val.call_method0("as_py")?
+                        } else {
+                            // Fallback: convert to string representation
+                            val.call_method0("__str__")?
+                        };
+                        Ok(Some(py_str.extract::<String>()?))
                     }
                 })
                 .collect::<PyResult<Vec<_>>>()?;

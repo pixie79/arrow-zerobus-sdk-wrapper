@@ -112,6 +112,21 @@ pub struct WrapperConfiguration {
     pub retry_base_delay_ms: u64,
     /// Maximum delay in milliseconds for exponential backoff (default: 30000)
     pub retry_max_delay_ms: u64,
+    /// Disable Zerobus SDK transmission while maintaining debug file output (default: false)
+    ///
+    /// When `true`, the wrapper will skip all Zerobus SDK calls (initialization,
+    /// stream creation, data transmission) while still writing debug files (Arrow
+    /// and Protobuf) if debug output is enabled.
+    ///
+    /// # Requirements
+    /// - When `true`, `debug_enabled` must also be `true`
+    /// - Credentials (`client_id`, `client_secret`) are optional when `true`
+    ///
+    /// # Use Cases
+    /// - Local development without network access
+    /// - CI/CD testing without credentials
+    /// - Performance testing of conversion logic
+    pub zerobus_writer_disabled: bool,
 }
 
 impl WrapperConfiguration {
@@ -148,6 +163,7 @@ impl WrapperConfiguration {
             retry_max_attempts: 5,
             retry_base_delay_ms: 100,
             retry_max_delay_ms: 30000,
+            zerobus_writer_disabled: false,
         }
     }
 
@@ -236,6 +252,34 @@ impl WrapperConfiguration {
         self
     }
 
+    /// Set writer disabled mode
+    ///
+    /// # Arguments
+    ///
+    /// * `disabled` - If `true`, disables Zerobus SDK transmission while maintaining debug output
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = WrapperConfiguration::new(
+    ///     "https://workspace.cloud.databricks.com".to_string(),
+    ///     "my_table".to_string(),
+    /// )
+    /// .with_debug_output(PathBuf::from("./debug_output"))
+    /// .with_zerobus_writer_disabled(true);
+    /// ```
+    pub fn with_zerobus_writer_disabled(mut self, disabled: bool) -> Self {
+        self.zerobus_writer_disabled = disabled;
+        self
+    }
+
     /// Validate configuration
     ///
     /// Checks that all required fields are present and valid.
@@ -249,6 +293,7 @@ impl WrapperConfiguration {
     /// Returns `ConfigurationError` if:
     /// - `zerobus_endpoint` is not a valid URL starting with `https://` or `http://`
     /// - `debug_enabled` is true but `debug_output_dir` is not provided
+    /// - `zerobus_writer_disabled` is true but `debug_enabled` is false
     /// - `retry_max_attempts` is 0
     /// - `debug_flush_interval_secs` is 0
     pub fn validate(&self) -> Result<(), ZerobusError> {
@@ -266,6 +311,13 @@ impl WrapperConfiguration {
         if self.debug_enabled && self.debug_output_dir.is_none() {
             return Err(ZerobusError::ConfigurationError(
                 "debug_output_dir is required when debug_enabled is true".to_string(),
+            ));
+        }
+
+        // Validate writer disabled mode requires debug enabled
+        if self.zerobus_writer_disabled && !self.debug_enabled {
+            return Err(ZerobusError::ConfigurationError(
+                "debug_enabled must be true when zerobus_writer_disabled is true. Use with_debug_output() to enable debug output.".to_string(),
             ));
         }
 

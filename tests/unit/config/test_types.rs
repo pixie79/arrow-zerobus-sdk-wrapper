@@ -252,3 +252,91 @@ fn test_config_validate_max_delay_less_than_base() {
     assert!(config.validate().is_err());
 }
 
+#[test]
+fn test_config_with_zerobus_writer_disabled() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_zerobus_writer_disabled(true);
+
+    assert!(config.zerobus_writer_disabled);
+}
+
+#[test]
+fn test_config_backward_compatibility_default_false() {
+    // Verify backward compatibility: default value is false (existing behavior preserved)
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    );
+
+    // Default should be false (backward compatible)
+    assert!(!config.zerobus_writer_disabled, "Default value should be false for backward compatibility");
+    
+    // Existing code should continue to work - validation should pass with credentials
+    // (This test verifies the field exists but doesn't change existing behavior)
+    let config_with_creds = config
+        .with_credentials("client_id".to_string(), "client_secret".to_string())
+        .with_unity_catalog("https://unity-catalog-url".to_string());
+    
+    // Should validate successfully (existing behavior)
+    assert!(config_with_creds.validate().is_ok(), "Existing code should continue to work");
+}
+
+#[test]
+fn test_config_zerobus_writer_disabled_default() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    );
+
+    assert!(!config.zerobus_writer_disabled);
+}
+
+#[test]
+fn test_config_validate_writer_disabled_requires_debug_enabled() {
+    let mut config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    );
+    config.zerobus_writer_disabled = true;
+    config.debug_enabled = false;
+
+    let validation_result = config.validate();
+    assert!(validation_result.is_err());
+    let err = validation_result.unwrap_err();
+    // Use starts_with for more specific assertion to avoid false positives
+    assert!(
+        err.to_string()
+            .starts_with("debug_enabled must be true when zerobus_writer_disabled is true"),
+        "Error message should start with expected text, got: {}",
+        err.to_string()
+    );
+}
+
+#[test]
+fn test_config_validate_writer_disabled_with_debug_enabled() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(PathBuf::from("/tmp/debug"))
+    .with_zerobus_writer_disabled(true);
+
+    assert!(config.validate().is_ok());
+}
+
+#[test]
+fn test_config_validate_credentials_optional_when_writer_disabled() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(PathBuf::from("/tmp/debug"))
+    .with_zerobus_writer_disabled(true);
+    // No credentials provided
+
+    assert!(config.validate().is_ok());
+}
+

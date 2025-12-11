@@ -1,0 +1,2 @@
+source .venv311/bin/activate
+export PYO3_NO_PYTHON_VERSION_CHECK=1

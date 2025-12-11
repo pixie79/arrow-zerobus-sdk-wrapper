@@ -1,6 +1,6 @@
 [package]
 name = "arrow-zerobus-sdk-wrapper"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Arrow Zerobus SDK Wrapper Team"]
 description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
@@ -100,6 +100,11 @@ harness = false
 [[bench]]
 name = "throughput"
 path = "benches/performance/bench_throughput.rs"
+harness = false
+
+[[bench]]
+name = "writer_disabled"
+path = "benches/performance/bench_writer_disabled.rs"
 harness = false
 
 [profile.release]

@@ -29,6 +29,11 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install black ruff
       
+      - name: Check version consistency
+        run: |
+          chmod +x scripts/check_version.sh
+          ./scripts/check_version.sh
+      
       - name: Check Rust formatting
         run: cargo fmt --check --all
       

@@ -156,3 +156,66 @@ async fn test_debug_file_rotation() {
     }
 }
 
+#[tokio::test]
+async fn test_debug_files_written_when_writer_disabled() {
+    // Test that debug files are written even when writer is disabled
+    let temp_dir = TempDir::new().unwrap();
+    let debug_output_dir = temp_dir.path().to_path_buf();
+    
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(debug_output_dir.clone())
+    .with_zerobus_writer_disabled(true);
+    // Note: No credentials required when writer is disabled
+
+    // Initialize wrapper with writer disabled mode
+    let wrapper_result = ZerobusWrapper::new(config).await;
+    
+    // Should succeed without credentials
+    assert!(wrapper_result.is_ok(), "Wrapper should initialize without credentials when writer disabled");
+    
+    let wrapper = wrapper_result.unwrap();
+    
+    // Create test batch
+    let schema = Schema::new(vec![
+        Field::new("id", DataType::Int64, false),
+        Field::new("name", DataType::Utf8, false),
+    ]);
+    let id_array = Int64Array::from(vec![1, 2, 3]);
+    let name_array = StringArray::from(vec!["Alice", "Bob", "Charlie"]);
+    let batch = RecordBatch::try_new(
+        Arc::new(schema),
+        vec![Arc::new(id_array), Arc::new(name_array)],
+    )
+    .unwrap();
+
+    // Send batch - should write debug files but skip SDK calls
+    let result = wrapper.send_batch(batch).await;
+    
+    // Should succeed (conversion succeeded, no network calls made)
+    assert!(result.is_ok(), "send_batch should succeed when writer disabled");
+    let transmission_result = result.unwrap();
+    assert!(transmission_result.success, "Transmission result should indicate success");
+    
+    // Flush debug files
+    wrapper.flush().await.unwrap();
+    
+    // Wait a bit for file writes to complete
+    sleep(Duration::from_millis(500)).await;
+    
+    // Verify Arrow file was created
+    let sanitized_table_name = "test_table".replace(['.', '/'], "_");
+    let arrow_file = debug_output_dir.join(format!("zerobus/arrow/{}.arrow", sanitized_table_name));
+    assert!(arrow_file.exists(), "Arrow file should be created when writer disabled");
+    let metadata = std::fs::metadata(&arrow_file).unwrap();
+    assert!(metadata.len() > 0, "Arrow file should not be empty");
+    
+    // Verify Protobuf file was created
+    let proto_file = debug_output_dir.join(format!("zerobus/proto/{}.proto", sanitized_table_name));
+    assert!(proto_file.exists(), "Protobuf file should be created when writer disabled");
+    let metadata = std::fs::metadata(&proto_file).unwrap();
+    assert!(metadata.len() > 0, "Protobuf file should not be empty");
+}
+
