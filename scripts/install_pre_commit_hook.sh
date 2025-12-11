@@ -88,12 +88,30 @@ else
     echo "ℹ️  No Python files changed, skipping Python formatting check"
 fi
 
-# 4. Run Python tests (if Python files changed or if bindings are available)
+# 4. Build Python bindings if needed (if Python/Rust files changed)
 echo ""
-echo "🔍 Running Python tests..."
+echo "🔍 Checking Python bindings..."
 if git diff --cached --name-only | grep -qE '\.(py|rs)$|tests/python/|src/python/'; then
     # Check if Python bindings are available
-    if python3 -c "import arrow_zerobus_sdk_wrapper" 2>/dev/null; then
+    if ! python3 -c "import arrow_zerobus_sdk_wrapper" 2>/dev/null; then
+        echo "📦 Python bindings not found, building..."
+        
+        # Check if maturin is available
+        if ! command -v maturin &> /dev/null; then
+            if python3 -m pip show maturin > /dev/null 2>&1; then
+                # maturin is installed via pip, use python3 -m maturin
+                MATURIN_CMD="python3 -m maturin"
+            else
+                echo "❌ ERROR: maturin is not installed but Python/Rust files are staged"
+                echo "   Install with: pip install maturin"
+                echo "   Or: python3 -m pip install maturin"
+                echo "   This is required to build Python bindings for testing"
+                FAILED=1
+            fi
+        else
+            MATURIN_CMD="maturin"
+        fi
+        
         # Set up environment variables for PyO3
         export PYO3_NO_PYTHON_VERSION_CHECK=1
         if command -v python3 &> /dev/null; then
@@ -101,25 +119,55 @@ if git diff --cached --name-only | grep -qE '\.(py|rs)$|tests/python/|src/python
             export PYO3_PYTHON="$PYTHON_EXEC"
         fi
         
-        # Check if pytest is available
-        if python3 -m pytest --version > /dev/null 2>&1; then
-            # Run tests without coverage for speed (coverage is checked in CI)
-            # Use -o to override pytest.ini addopts, skip forked mode for faster execution
-            if ! python3 -m pytest tests/python/ -v -o addopts="-v" --no-cov 2>&1; then
-                echo "❌ Python tests failed"
-                echo "   Run: python3 -m pytest tests/python/ -v"
+        # Build Python bindings
+        if [ $FAILED -eq 0 ]; then
+            if ! $MATURIN_CMD develop --release 2>&1; then
+                echo "❌ ERROR: Failed to build Python bindings"
+                echo "   This is required for Python tests to run"
+                echo "   Build manually with: maturin develop --release"
+                FAILED=1
+            else
+                echo "✅ Python bindings built successfully"
+            fi
+        fi
+    else
+        echo "✅ Python bindings available"
+    fi
+    
+    # 5. Run Python tests (if bindings are now available)
+    if [ $FAILED -eq 0 ]; then
+        echo ""
+        echo "🔍 Running Python tests..."
+        if python3 -c "import arrow_zerobus_sdk_wrapper" 2>/dev/null; then
+            # Set up environment variables for PyO3
+            export PYO3_NO_PYTHON_VERSION_CHECK=1
+            if command -v python3 &> /dev/null; then
+                PYTHON_EXEC=$(python3 -c "import sys; print(sys.executable)")
+                export PYO3_PYTHON="$PYTHON_EXEC"
+            fi
+            
+            # Check if pytest is available
+            if python3 -m pytest --version > /dev/null 2>&1; then
+                # Run tests without coverage for speed (coverage is checked in CI)
+                # Use -o to override pytest.ini addopts, skip forked mode for faster execution
+                if ! python3 -m pytest tests/python/ -v -o addopts="-v" --no-cov 2>&1; then
+                    echo "❌ Python tests failed"
+                    echo "   Run: python3 -m pytest tests/python/ -v"
+                    FAILED=1
+                fi
+            else
+                echo "❌ ERROR: pytest is not installed but Python files are staged"
+                echo "   Install with: pip install pytest pytest-asyncio"
+                echo "   This is required for Python tests"
                 FAILED=1
             fi
         else
-            echo "⚠️  pytest not installed, skipping Python tests"
-            echo "   Install with: pip install pytest pytest-asyncio"
+            echo "❌ ERROR: Python bindings still not available after build attempt"
+            FAILED=1
         fi
-    else
-        echo "ℹ️  Python bindings not available, skipping Python tests"
-        echo "   Build with: maturin develop --release"
     fi
 else
-    echo "ℹ️  No Python/Rust files changed, skipping Python tests"
+    echo "ℹ️  No Python/Rust files changed, skipping Python bindings build and tests"
 fi
 
 # Exit with error if any checks failed
