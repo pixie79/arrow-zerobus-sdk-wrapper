@@ -60,6 +60,7 @@ async def main():
 
     # Send batch to Zerobus
     print("\nSending batch to Zerobus...")
+    original_batch = batch  # Keep reference for quarantine workflow
     try:
         result = wrapper.send_batch(batch)
 
@@ -68,6 +69,62 @@ async def main():
             print(f"   Latency: {result.latency_ms}ms")
             print(f"   Size: {result.batch_size_bytes} bytes")
             print(f"   Attempts: {result.attempts}")
+            
+            # Handle per-row errors with quarantine workflow
+            if result.is_partial_success():
+                print("\n⚠️  Partial success detected:")
+                print(f"   Total rows: {result.total_rows}")
+                print(f"   Successful: {result.successful_count}")
+                print(f"   Failed: {result.failed_count}")
+                
+                # Extract and write successful rows to main table
+                successful_batch = result.extract_successful_batch(original_batch)
+                if successful_batch is not None:
+                    print(f"\n✅ Writing {successful_batch.num_rows} successful rows to main table...")
+                    # In a real application, you would write successful_batch to your main table here
+                    # await write_to_main_table(successful_batch)
+                
+                # Extract and quarantine failed rows
+                failed_batch = result.extract_failed_batch(original_batch)
+                if failed_batch is not None:
+                    print(f"\n❌ Quarantining {failed_batch.num_rows} failed rows...")
+                    failed_indices = result.get_failed_row_indices()
+                    if result.failed_rows:
+                        for row_idx, error_msg in result.failed_rows:
+                            print(f"   Row {row_idx}: {error_msg}")
+                    # In a real application, you would quarantine failed_batch here
+                    # await quarantine_batch(failed_batch)
+            elif result.has_failed_rows():
+                print("\n❌ All rows failed")
+                failed_batch = result.extract_failed_batch(original_batch)
+                if failed_batch is not None:
+                    print(f"   Quarantining {failed_batch.num_rows} failed rows...")
+                    # In a real application, you would quarantine failed_batch here
+                    # await quarantine_batch(failed_batch)
+            else:
+                print(f"\n✅ All {result.successful_count} rows succeeded!")
+            
+            # Error analysis and pattern detection
+            if result.has_failed_rows():
+                print("\n📊 Error Analysis:")
+                stats = result.get_error_statistics()
+                print(f"   Success rate: {stats['success_rate'] * 100:.1}%")
+                print(f"   Failure rate: {stats['failure_rate'] * 100:.1}%")
+                
+                grouped = result.group_errors_by_type()
+                if grouped:
+                    print("   Error breakdown by type:")
+                    for error_type, indices in grouped.items():
+                        print(f"     {error_type}: {len(indices)} rows (indices: {indices})")
+                
+                # Get all error messages for debugging
+                error_messages = result.get_error_messages()
+                if error_messages:
+                    print("   Sample error messages:")
+                    for i, msg in enumerate(error_messages[:3]):
+                        print(f"     {i + 1}. {msg}")
+                    if len(error_messages) > 3:
+                        print(f"     ... and {len(error_messages) - 3} more")
         else:
             print("❌ Transmission failed")
             print(f"   Error: {result.error}")

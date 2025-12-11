@@ -133,6 +133,11 @@ fn test_transmission_result_contract() {
         attempts: 1,
         latency_ms: Some(100),
         batch_size_bytes: 1024,
+        failed_rows: None,
+        successful_rows: None,
+        total_rows: 0,
+        successful_count: 0,
+        failed_count: 0,
     };
 
     assert!(result.success);

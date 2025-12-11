@@ -49,9 +49,8 @@ fn test_empty_batch() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 0, "Empty batch should produce empty result");
+    assert_eq!(result.successful_bytes.len(), 0, "Empty batch should produce empty result");
+    assert_eq!(result.failed_rows.len(), 0);
 }
 
 #[test]
@@ -97,9 +96,12 @@ fn test_large_batch() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), num_rows);
+    assert_eq!(result.successful_bytes.len(), num_rows);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     
     // Verify all rows have bytes
     for (idx, bytes) in bytes_list.iter().enumerate() {
@@ -164,9 +166,12 @@ fn test_all_null_values() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     
     // All null values should produce minimal or empty bytes (null fields are skipped)
     for (idx, bytes) in bytes_list.iter().enumerate() {
@@ -302,9 +307,12 @@ fn test_missing_fields_in_descriptor() {
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
     
     // Should succeed - extra fields are simply skipped
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     
     // Bytes should contain id and name, but not extra
     for bytes in bytes_list {
@@ -366,9 +374,12 @@ fn test_extra_fields_in_descriptor() {
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
     
     // Should succeed - missing fields are treated as null/optional
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     
     // Bytes should contain id field, name field is skipped (not in Arrow)
     for bytes in bytes_list {
@@ -415,17 +426,21 @@ fn test_type_mismatch() {
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
     
-    // Should fail with conversion error
-    assert!(result.is_err());
-    if let Err(ZerobusError::ConversionError(msg)) = result {
-        // Error should mention type mismatch or conversion issue
-        assert!(
-            msg.contains("type") || msg.contains("conversion") || msg.contains("Int64") || msg.contains("String"),
-            "Error message should mention type/conversion: {}",
-            msg
-        );
-    } else {
-        panic!("Expected ConversionError, got: {:?}", result);
+    // Should have failed rows (type mismatch)
+    assert!(result.failed_rows.len() > 0, "Type mismatch should result in failed rows");
+    // Check conversion errors
+    for (_, error) in &result.failed_rows {
+        match error {
+            ZerobusError::ConversionError(msg) => {
+                // Error should mention type mismatch or conversion issue
+                assert!(
+                    msg.contains("type") || msg.contains("conversion") || msg.contains("Int64") || msg.contains("String") || msg.contains("encoding"),
+                    "Error message should mention type/conversion: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected ConversionError, got {:?}", error),
+        }
     }
 }
 
@@ -467,9 +482,9 @@ fn test_single_row_batch() {
     };
 
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 1);
+    assert_eq!(result.successful_bytes.len(), 1);
+    assert_eq!(result.failed_rows.len(), 0);
+    let bytes_list: Vec<Vec<u8>> = result.successful_bytes.into_iter().map(|(_, bytes)| bytes).collect();
     assert!(!bytes_list[0].is_empty());
 }
 
@@ -523,9 +538,12 @@ fn test_many_columns() {
     };
     
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     
     // Each row should have bytes for all columns
     for (idx, bytes) in bytes_list.iter().enumerate() {

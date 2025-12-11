@@ -1,4 +1,5 @@
 //! Contract tests for API compliance
 
-// Contract tests will be added here
+mod test_transmission_result_contract;
+mod test_per_row_errors_contract;
 

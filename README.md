@@ -11,6 +11,8 @@ Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings. Pro
 - **Observability**: OpenTelemetry metrics and traces integration
 - **Debug Output**: Optional Arrow and Protobuf file output for debugging
 - **Writer Disabled Mode**: Disable Zerobus SDK transmission while maintaining debug file output for local development and testing
+- **Per-Row Error Tracking**: Identify which specific rows failed, enabling partial batch success and efficient quarantine workflows
+- **Error Analysis**: Group errors by type, track statistics, and analyze patterns for debugging
 - **Thread-Safe**: Concurrent operations from multiple threads/async tasks
 - **Cross-Platform**: Linux, macOS, Windows support
 
@@ -70,6 +72,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     if result.success {
         println!("Batch sent successfully!");
+        
+        // Handle per-row errors (if any)
+        if result.is_partial_success() {
+            println!("⚠️  Partial success: {} succeeded, {} failed", 
+                     result.successful_count, result.failed_count);
+            
+            // Extract and quarantine failed rows
+            if let Some(failed_batch) = result.extract_failed_batch(&batch) {
+                // Quarantine failed_batch
+                println!("Quarantining {} failed rows", failed_batch.num_rows());
+            }
+            
+            // Extract and write successful rows
+            if let Some(successful_batch) = result.extract_successful_batch(&batch) {
+                // Write successful_batch to main table
+                println!("Writing {} successful rows", successful_batch.num_rows());
+            }
+        }
+        
+        // Analyze error patterns
+        if result.has_failed_rows() {
+            let stats = result.get_error_statistics();
+            println!("Success rate: {:.1}%", stats.success_rate * 100.0);
+            
+            let grouped = result.group_errors_by_type();
+            for (error_type, indices) in &grouped {
+                println!("  {}: {} rows", error_type, indices.len());
+            }
+        }
     }
     
     wrapper.shutdown().await?;
@@ -106,10 +137,34 @@ async def main():
     ]
     batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
     
+    # Send batch
     result = await wrapper.send_batch(batch)
     
     if result.success:
-        print(f"Batch sent successfully in {result.latency_ms}ms")
+        print("Batch sent successfully!")
+        
+        # Handle per-row errors (if any)
+        if result.is_partial_success():
+            print(f"⚠️  Partial success: {result.successful_count} succeeded, {result.failed_count} failed")
+            
+            # Extract and quarantine failed rows
+            failed_batch = result.extract_failed_batch(batch)
+            if failed_batch is not None:
+                print(f"Quarantining {failed_batch.num_rows} failed rows")
+            
+            # Extract and write successful rows
+            successful_batch = result.extract_successful_batch(batch)
+            if successful_batch is not None:
+                print(f"Writing {successful_batch.num_rows} successful rows")
+        
+        # Analyze error patterns
+        if result.has_failed_rows():
+            stats = result.get_error_statistics()
+            print(f"Success rate: {stats['success_rate'] * 100:.1}%")
+            
+            grouped = result.group_errors_by_type()
+            for error_type, indices in grouped.items():
+                print(f"  {error_type}: {len(indices)} rows")
     
     await wrapper.shutdown()
 

@@ -11,4 +11,7 @@ mod test_sdk_reinitialization;
 mod test_network_timeouts;
 mod test_network_verification;
 mod test_quickstart_validation;
+mod test_per_row_errors;
+mod test_quarantine_workflow;
+mod test_error_analysis;
 

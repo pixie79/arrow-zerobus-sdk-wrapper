@@ -45,4 +45,4 @@ pub mod python;
 
 pub use config::{OtlpConfig, OtlpSdkConfig, WrapperConfiguration};
 pub use error::ZerobusError;
-pub use wrapper::{TransmissionResult, ZerobusWrapper};
+pub use wrapper::{ErrorStatistics, TransmissionResult, ZerobusWrapper};

@@ -13,4 +13,11 @@ mod test_protobuf_serialization;
 mod test_debug_rotation;
 mod test_debug_concurrent;
 mod test_debug_descriptor;
+mod test_transmission_result;
+mod test_conversion_result;
+mod test_per_row_conversion;
+mod test_per_row_transmission;
+mod test_per_row_edge_cases;
+mod test_quarantine_helpers;
+mod test_error_analysis;
 

@@ -1,6 +1,6 @@
 [package]
 name = "arrow-zerobus-sdk-wrapper"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 authors = ["Arrow Zerobus SDK Wrapper Team"]
 description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
@@ -42,10 +42,10 @@ opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "metrics", "trac
 opentelemetry-otlp = { version = "0.31", features = ["metrics", "trace", "grpc-tonic"] }
 opentelemetry-proto = "0.31"
 
-# OTLP Arrow Library (git dependency)
+# OTLP Arrow Library (published crate)
 # Optional: Only used when observability is enabled
-# Repository: https://github.com/pixie79/otlp-rust-service
-otlp-arrow-library = { git = "https://github.com/pixie79/otlp-rust-service.git", branch = "main", optional = true }
+# Published on crates.io: https://crates.io/crates/otlp-arrow-library
+otlp-arrow-library = { version = "0.6.4", optional = true }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

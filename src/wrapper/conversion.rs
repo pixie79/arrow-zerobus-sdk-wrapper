@@ -94,8 +94,8 @@ fn validate_descriptor_recursive(
 pub struct ProtobufConversionResult {
     /// Successful conversions: (row_index, protobuf_bytes)
     pub successful_bytes: Vec<(usize, Vec<u8>)>,
-    /// Failed conversions: (row_index, error_message)
-    pub failed_rows: Vec<(usize, String)>,
+    /// Failed conversions: (row_index, error)
+    pub failed_rows: Vec<(usize, ZerobusError)>,
 }
 
 /// Convert Arrow RecordBatch to Protobuf bytes
@@ -111,19 +111,19 @@ pub struct ProtobufConversionResult {
 /// # Returns
 ///
 /// Returns ProtobufConversionResult with successful bytes and failed rows.
-///
-/// # Errors
-///
-/// Returns `ConversionError` if conversion fails completely.
+/// This function processes all rows and collects errors per-row instead of failing fast.
 pub fn record_batch_to_protobuf_bytes(
     batch: &RecordBatch,
     descriptor: &DescriptorProto,
-) -> Result<Vec<Vec<u8>>, ZerobusError> {
+) -> ProtobufConversionResult {
     let schema = batch.schema();
     let num_rows = batch.num_rows();
 
     if num_rows == 0 {
-        return Ok(vec![]);
+        return ProtobufConversionResult {
+            successful_bytes: vec![],
+            failed_rows: vec![],
+        };
     }
 
     // Build field name -> field descriptor map for efficient lookup
@@ -147,11 +147,15 @@ pub fn record_batch_to_protobuf_bytes(
         })
         .collect();
 
-    let mut protobuf_bytes_list = Vec::new();
+    let mut successful_bytes = Vec::new();
+    let mut failed_rows = Vec::new();
 
     // Convert each row directly from Arrow to Protobuf
+    // Collect errors per-row instead of failing fast
     for row_idx in 0..num_rows {
         let mut row_buffer = Vec::new();
+        let mut row_failed = false;
+        let mut row_error: Option<ZerobusError> = None;
 
         // Encode each field directly from Arrow array to Protobuf wire format
         for (field_idx, field) in schema.fields().iter().enumerate() {
@@ -170,23 +174,36 @@ pub fn record_batch_to_protobuf_bytes(
                     descriptor,
                     Some(&nested_types_by_name),
                 ) {
-                    // Standardized error format: context, field name, row index, details
-                    return Err(ZerobusError::ConversionError(format!(
+                    // Collect error for this row instead of returning immediately
+                    row_failed = true;
+                    row_error = Some(ZerobusError::ConversionError(format!(
                         "Field encoding failed: field='{}', row={}, error={}",
                         field.name(),
                         row_idx,
                         e
                     )));
+                    break; // Stop processing this row
                 }
             } else {
                 debug!("Field '{}' not found in descriptor, skipping", field.name());
             }
         }
 
-        protobuf_bytes_list.push(row_buffer);
+        if row_failed {
+            // Add to failed rows
+            if let Some(error) = row_error {
+                failed_rows.push((row_idx, error));
+            }
+        } else {
+            // Add to successful conversions
+            successful_bytes.push((row_idx, row_buffer));
+        }
     }
 
-    Ok(protobuf_bytes_list)
+    ProtobufConversionResult {
+        successful_bytes,
+        failed_rows,
+    }
 }
 
 /// Encode a field value from Arrow array directly to Protobuf wire format

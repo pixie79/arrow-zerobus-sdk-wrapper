@@ -70,6 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Send batch to Zerobus
     println!("\nSending batch to Zerobus...");
+    let original_batch = batch.clone();
     match wrapper.send_batch(batch).await {
         Ok(result) => {
             if result.success {
@@ -77,6 +78,80 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("   Latency: {}ms", result.latency_ms.unwrap_or(0));
                 println!("   Size: {} bytes", result.batch_size_bytes);
                 println!("   Attempts: {}", result.attempts);
+
+                // Handle per-row errors with quarantine workflow
+                if result.is_partial_success() {
+                    println!("\n⚠️  Partial success detected:");
+                    println!("   Total rows: {}", result.total_rows);
+                    println!("   Successful: {}", result.successful_count);
+                    println!("   Failed: {}", result.failed_count);
+
+                    // Extract and write successful rows to main table
+                    if let Some(successful_batch) = result.extract_successful_batch(&original_batch)
+                    {
+                        println!(
+                            "\n✅ Writing {} successful rows to main table...",
+                            successful_batch.num_rows()
+                        );
+                        // In a real application, you would write successful_batch to your main table here
+                        // write_to_main_table(successful_batch).await?;
+                    }
+
+                    // Extract and quarantine failed rows
+                    if let Some(failed_batch) = result.extract_failed_batch(&original_batch) {
+                        println!(
+                            "\n❌ Quarantining {} failed rows...",
+                            failed_batch.num_rows()
+                        );
+                        for (idx, error) in result.failed_rows.as_ref().unwrap() {
+                            println!("   Row {}: {:?}", idx, error);
+                        }
+                        // In a real application, you would quarantine failed_batch here
+                        // quarantine_batch(failed_batch).await?;
+                    }
+                } else if result.has_failed_rows() {
+                    println!("\n❌ All rows failed");
+                    if let Some(failed_batch) = result.extract_failed_batch(&original_batch) {
+                        println!("   Quarantining {} failed rows...", failed_batch.num_rows());
+                        // In a real application, you would quarantine failed_batch here
+                        // quarantine_batch(failed_batch).await?;
+                    }
+                } else {
+                    println!("\n✅ All {} rows succeeded!", result.successful_count);
+                }
+
+                // Error analysis and pattern detection
+                if result.has_failed_rows() {
+                    println!("\n📊 Error Analysis:");
+                    let stats = result.get_error_statistics();
+                    println!("   Success rate: {:.1}%", stats.success_rate * 100.0);
+                    println!("   Failure rate: {:.1}%", stats.failure_rate * 100.0);
+
+                    let grouped = result.group_errors_by_type();
+                    if !grouped.is_empty() {
+                        println!("   Error breakdown by type:");
+                        for (error_type, indices) in &grouped {
+                            println!(
+                                "     {}: {} rows (indices: {:?})",
+                                error_type,
+                                indices.len(),
+                                indices
+                            );
+                        }
+                    }
+
+                    // Get all error messages for debugging
+                    let error_messages = result.get_error_messages();
+                    if !error_messages.is_empty() {
+                        println!("   Sample error messages:");
+                        for (i, msg) in error_messages.iter().take(3).enumerate() {
+                            println!("     {}. {}", i + 1, msg);
+                        }
+                        if error_messages.len() > 3 {
+                            println!("     ... and {} more", error_messages.len() - 3);
+                        }
+                    }
+                }
             } else {
                 println!("❌ Transmission failed");
                 if let Some(error) = result.error {

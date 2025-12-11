@@ -50,9 +50,12 @@ fn test_date32_conversion() {
     };
     
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
-    assert_eq!(bytes_list.len(), 3);
+    assert_eq!(result.successful_bytes.len(), 3);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     assert!(!bytes_list[0].is_empty());
 }
 
@@ -357,8 +360,12 @@ fn test_dictionary_conversion() {
     };
     
     let result = conversion::record_batch_to_protobuf_bytes(&batch, &descriptor);
-    assert!(result.is_ok());
-    let bytes_list = result.unwrap();
+    assert_eq!(result.successful_bytes.len(), 4);
+    assert_eq!(result.failed_rows.len(), 0);
+    // Sort by row index and extract bytes
+    let mut bytes_list: Vec<(usize, Vec<u8>)> = result.successful_bytes;
+    bytes_list.sort_by_key(|(idx, _)| *idx);
+    let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     assert_eq!(bytes_list.len(), 4);
 }
 
