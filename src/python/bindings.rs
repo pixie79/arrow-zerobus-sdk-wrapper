@@ -684,16 +684,19 @@ fn pyarrow_to_rust_batch_python_api(py: Python, batch_ref: &PyAny) -> PyResult<R
     use std::sync::Arc;
 
     // Get schema from PyArrow RecordBatch
+    // PyArrow Schema objects are sequences - they support len() and indexing
     let schema_obj = batch_ref.getattr("schema")?;
-    let schema_fields = schema_obj.getattr("fields")?;
-    let num_fields = schema_fields.len()?;
+
+    // Get number of fields using len() method (Schema objects support len())
+    let num_fields = schema_obj.call_method0("__len__")?.extract::<usize>()?;
 
     let mut rust_fields = Vec::new();
     let mut rust_arrays = Vec::new();
 
     // Convert each field and array
+    // PyArrow Schema objects support indexing: schema[i] returns the field
     for i in 0..num_fields {
-        let field_obj = schema_fields.get_item(i)?;
+        let field_obj = schema_obj.get_item(i)?;
         let field_name = field_obj.getattr("name")?.extract::<String>()?;
         let field_type_obj = field_obj.getattr("type")?;
         let field_type_str = format!("{}", field_type_obj);
