@@ -1170,18 +1170,18 @@ fn rust_batch_to_pyarrow(py: Python, batch: &RecordBatch) -> PyResult<PyObject> 
     // Import PyArrow IPC module
     let pyarrow = PyModule::import(py, "pyarrow")?;
     let ipc_module = pyarrow.getattr("ipc")?;
-    
+
     // Create a BufferReader from the IPC bytes
     let buffer_reader_class = pyarrow.getattr("BufferReader")?;
     let ipc_bytes = PyBytes::new(py, &buffer);
     let buffer_reader = buffer_reader_class.call1((ipc_bytes,))?;
-    
+
     // Use open_stream to read the RecordBatch
     let open_stream = ipc_module.getattr("open_stream")?;
     let stream_reader = open_stream.call1((buffer_reader,))?;
-    
+
     // Read the first (and only) batch from the stream
     let read_next = stream_reader.call_method0("read_next_batch")?;
-    
+
     Ok(read_next.to_object(py))
 }
