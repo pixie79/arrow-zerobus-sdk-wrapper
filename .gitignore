@@ -1,63 +1,58 @@
-# Rust
-target/
-debug/
-release/
-*.rs.bk
-*.rlib
-*.prof*
-Cargo.lock
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-*.tmp
-
-# Logs
-*.log
-*.log.*
-
-# Environment
-.env
-.env.local
-.env.*.local
-
-# Python (for bindings)
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-*.egg
-*.egg-info/
-dist/
+.Python
 build/
-.venv/
-venv/
-.pytest_cache/
-.coverage
-htmlcov/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Debug output (if enabled)
+# Virtual environments
+.venv/
+.venv311/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Rust
+target/
+Cargo.lock
+
+# Debug files
 debug_output/
-zerobus/
 *.arrow
 *.proto
 
 # Coverage
-coverage/
-*.lcov
-tarpaulin-report.html
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
 
-# Documentation builds
-doc/
-target/doc/
-
-# Test results directory
-testResults/
-
+# OS
+.DS_Store
+Thumbs.db

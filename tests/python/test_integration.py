@@ -298,14 +298,14 @@ async def test_wrapper_works_without_credentials_when_disabled():
         batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
 
         # Send batch - should succeed without credentials
-        result = await wrapper.send_batch(batch)
+        result = wrapper.send_batch(batch)
         assert result.success, "send_batch should succeed when writer disabled"
 
         # Verify debug files were written
         # Files may not exist immediately, but the operation should succeed
         assert result.success
 
-        await wrapper.shutdown()
+        wrapper.shutdown()
     finally:
         # Cleanup
         import shutil
