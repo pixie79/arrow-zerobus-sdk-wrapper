@@ -1167,15 +1167,21 @@ fn rust_batch_to_pyarrow(py: Python, batch: &RecordBatch) -> PyResult<PyObject> 
         .finish()
         .map_err(|e| PyException::new_err(format!("Failed to finish IPC writer: {}", e)))?;
 
-    // Import PyArrow module
+    // Import PyArrow IPC module
     let pyarrow = PyModule::import(py, "pyarrow")?;
-
-    // Get RecordBatch class
-    let record_batch_class = pyarrow.getattr("RecordBatch")?;
-
-    // Deserialize IPC bytes in Python using PyArrow
+    let ipc_module = pyarrow.getattr("ipc")?;
+    
+    // Create a BufferReader from the IPC bytes
+    let buffer_reader_class = pyarrow.getattr("BufferReader")?;
     let ipc_bytes = PyBytes::new(py, &buffer);
-    let py_batch = record_batch_class.call_method1("from_pybytes", (ipc_bytes,))?;
-
-    Ok(py_batch.to_object(py))
+    let buffer_reader = buffer_reader_class.call1((ipc_bytes,))?;
+    
+    // Use open_stream to read the RecordBatch
+    let open_stream = ipc_module.getattr("open_stream")?;
+    let stream_reader = open_stream.call1((buffer_reader,))?;
+    
+    // Read the first (and only) batch from the stream
+    let read_next = stream_reader.call_method0("read_next_batch")?;
+    
+    Ok(read_next.to_object(py))
 }
