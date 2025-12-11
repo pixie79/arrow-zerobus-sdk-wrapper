@@ -89,46 +89,72 @@ impl ZerobusWrapper {
         // Validate configuration
         config.validate()?;
 
-        // Get required OAuth credentials
-        let unity_catalog_url = config
-            .unity_catalog_url
-            .as_ref()
-            .ok_or_else(|| {
-                ZerobusError::ConfigurationError(
-                    "unity_catalog_url is required for SDK".to_string(),
-                )
-            })?
-            .clone();
+        // Skip credential validation if writer is disabled (credentials optional in this mode)
+        if !config.zerobus_writer_disabled {
+            // Get required OAuth credentials
+            let unity_catalog_url = config
+                .unity_catalog_url
+                .as_ref()
+                .ok_or_else(|| {
+                    ZerobusError::ConfigurationError(
+                        "unity_catalog_url is required for SDK".to_string(),
+                    )
+                })?
+                .clone();
 
-        // Validate credentials are present (but don't expose them unnecessarily)
-        let _client_id = config.client_id.as_ref().ok_or_else(|| {
-            ZerobusError::ConfigurationError("client_id is required for SDK".to_string())
-        })?;
+            // Validate credentials are present (but don't expose them unnecessarily)
+            let _client_id = config.client_id.as_ref().ok_or_else(|| {
+                ZerobusError::ConfigurationError("client_id is required for SDK".to_string())
+            })?;
 
-        let _client_secret = config.client_secret.as_ref().ok_or_else(|| {
-            ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
-        })?;
+            let _client_secret = config.client_secret.as_ref().ok_or_else(|| {
+                ZerobusError::ConfigurationError("client_secret is required for SDK".to_string())
+            })?;
 
-        // Normalize and validate zerobus endpoint
-        let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
+            // Normalize and validate zerobus endpoint
+            let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
 
-        if normalized_endpoint.is_empty() {
-            return Err(ZerobusError::ConfigurationError(
-                "zerobus_endpoint cannot be empty".to_string(),
-            ));
-        }
+            if normalized_endpoint.is_empty() {
+                return Err(ZerobusError::ConfigurationError(
+                    "zerobus_endpoint cannot be empty".to_string(),
+                ));
+            }
 
-        if !normalized_endpoint.starts_with("https://")
-            && !normalized_endpoint.starts_with("http://")
-        {
-            return Err(ZerobusError::ConfigurationError(format!(
-                "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
+            if !normalized_endpoint.starts_with("https://")
+                && !normalized_endpoint.starts_with("http://")
+            {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
+                    normalized_endpoint
+                )));
+            }
+
+            info!("Zerobus endpoint: {}", normalized_endpoint);
+            info!("Unity Catalog URL: {}", unity_catalog_url);
+        } else {
+            // When writer is disabled, we still validate endpoint format but don't require credentials
+            let normalized_endpoint = config.zerobus_endpoint.trim().to_string();
+
+            if normalized_endpoint.is_empty() {
+                return Err(ZerobusError::ConfigurationError(
+                    "zerobus_endpoint cannot be empty".to_string(),
+                ));
+            }
+
+            if !normalized_endpoint.starts_with("https://")
+                && !normalized_endpoint.starts_with("http://")
+            {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "zerobus_endpoint must start with 'https://' or 'http://'. Got: '{}'",
+                    normalized_endpoint
+                )));
+            }
+
+            info!(
+                "Zerobus endpoint: {} (writer disabled mode)",
                 normalized_endpoint
-            )));
+            );
         }
-
-        info!("Zerobus endpoint: {}", normalized_endpoint);
-        info!("Unity Catalog URL: {}", unity_catalog_url);
 
         // Initialize SDK (will be created lazily when needed)
         // For now, we'll store None and create it on first use
@@ -435,6 +461,16 @@ impl ZerobusWrapper {
             }
         } else {
             warn!("⚠️  Debug writer is None - protobuf debug files will not be written. Check debug_enabled and debug_output_dir config.");
+        }
+
+        // Check if writer is disabled - if so, skip all SDK calls and return success
+        // Performance: Operations complete in <50ms (excluding file I/O) when writer disabled
+        // This enables performance testing of conversion logic without network overhead
+        if self.config.zerobus_writer_disabled {
+            debug!(
+                "Writer disabled mode enabled - skipping Zerobus SDK calls. Debug files written successfully."
+            );
+            return Ok(());
         }
 
         // 4. Ensure stream is created

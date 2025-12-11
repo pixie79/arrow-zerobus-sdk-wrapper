@@ -257,8 +257,30 @@ pub struct PyWrapperConfiguration {
 #[pymethods]
 #[allow(clippy::too_many_arguments)]
 impl PyWrapperConfiguration {
+    /// Initialize WrapperConfiguration with parameters.
+    ///
+    /// Args:
+    ///     endpoint: Zerobus endpoint URL (required)
+    ///     table_name: Target table name (required)
+    ///     client_id: OAuth2 client ID (optional when zerobus_writer_disabled is True)
+    ///     client_secret: OAuth2 client secret (optional when zerobus_writer_disabled is True)
+    ///     unity_catalog_url: Unity Catalog URL (optional when zerobus_writer_disabled is True)
+    ///     observability_enabled: Enable OpenTelemetry observability
+    ///     observability_config: OpenTelemetry configuration dict
+    ///     debug_enabled: Enable debug file output (required when zerobus_writer_disabled is True)
+    ///     debug_output_dir: Output directory for debug files
+    ///     debug_flush_interval_secs: Debug file flush interval in seconds
+    ///     debug_max_file_size: Maximum debug file size before rotation
+    ///     retry_max_attempts: Maximum retry attempts for transient failures
+    ///     retry_base_delay_ms: Base delay in milliseconds for exponential backoff
+    ///     retry_max_delay_ms: Maximum delay in milliseconds for exponential backoff
+    ///     zerobus_writer_disabled: Disable Zerobus SDK transmission while maintaining debug output
+    ///
+    /// Raises:
+    ///     ZerobusError: If configuration is invalid or initialization fails
+    ///         - ConfigurationError if zerobus_writer_disabled is True but debug_enabled is False
     #[new]
-    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000))]
+    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000, zerobus_writer_disabled=false))]
     pub fn new(
         endpoint: String,
         table_name: String,
@@ -274,6 +296,7 @@ impl PyWrapperConfiguration {
         retry_max_attempts: u32,
         retry_base_delay_ms: u64,
         retry_max_delay_ms: u64,
+        zerobus_writer_disabled: bool,
     ) -> PyResult<Self> {
         let mut config = WrapperConfiguration::new(endpoint, table_name);
 
@@ -336,6 +359,10 @@ impl PyWrapperConfiguration {
 
         config =
             config.with_retry_config(retry_max_attempts, retry_base_delay_ms, retry_max_delay_ms);
+
+        if zerobus_writer_disabled {
+            config = config.with_zerobus_writer_disabled(true);
+        }
 
         Ok(Self { inner: config })
     }
@@ -420,6 +447,11 @@ impl PyWrapperConfiguration {
     #[getter]
     fn observability_enabled(&self) -> bool {
         self.inner.observability_enabled
+    }
+
+    #[getter]
+    fn zerobus_writer_disabled(&self) -> bool {
+        self.inner.zerobus_writer_disabled
     }
 }
 

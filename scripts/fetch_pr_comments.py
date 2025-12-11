@@ -30,7 +30,6 @@ import re
 import sys
 from datetime import datetime
 from typing import Dict, List, Optional
-from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
@@ -58,7 +57,9 @@ class GitHubPRComments:
         if self.token:
             self.headers["Authorization"] = f"token {self.token}"
 
-    def _make_request(self, endpoint: str, method: str = "GET", data: Optional[Dict] = None):
+    def _make_request(
+        self, endpoint: str, method: str = "GET", data: Optional[Dict] = None
+    ):
         """
         Make a request to GitHub API and handle pagination (for GET) or single request (for POST).
 
@@ -75,22 +76,34 @@ class GitHubPRComments:
             url = f"{self.base_url}{endpoint}"
             req_data = json_lib.dumps(data).encode("utf-8") if data else None
             req = Request(url, data=req_data, headers=self.headers, method="POST")
-            
+
             try:
                 with urlopen(req) as response:
                     status_code = response.getcode()
                     headers = dict(response.headers)
 
                     if status_code == 401:
-                        print("Error: Authentication failed. Check your GitHub token.", file=sys.stderr)
+                        print(
+                            "Error: Authentication failed. Check your GitHub token.",
+                            file=sys.stderr,
+                        )
                         sys.exit(1)
                     elif status_code == 404:
-                        print(f"Error: Not found. Check owner/repo/PR number/comment ID.", file=sys.stderr)
+                        print(
+                            "Error: Not found. Check owner/repo/PR number/comment ID.",
+                            file=sys.stderr,
+                        )
                         sys.exit(1)
                     elif status_code == 403:
-                        print("Error: Rate limit exceeded or access denied.", file=sys.stderr)
+                        print(
+                            "Error: Rate limit exceeded or access denied.",
+                            file=sys.stderr,
+                        )
                         if "X-RateLimit-Remaining" in headers:
-                            print(f"Rate limit remaining: {headers['X-RateLimit-Remaining']}", file=sys.stderr)
+                            print(
+                                f"Rate limit remaining: {headers['X-RateLimit-Remaining']}",
+                                file=sys.stderr,
+                            )
                         sys.exit(1)
                     elif status_code not in (200, 201):
                         print(f"Error: HTTP {status_code}", file=sys.stderr)
@@ -102,13 +115,16 @@ class GitHubPRComments:
                     return json_lib.loads(response_data)
             except HTTPError as e:
                 print(f"Error: HTTP {e.code}: {e.reason}", file=sys.stderr)
-                error_body = e.read().decode("utf-8") if hasattr(e, 'read') else ""
+                error_body = e.read().decode("utf-8") if hasattr(e, "read") else ""
                 print(f"Response: {error_body}", file=sys.stderr)
                 sys.exit(1)
             except URLError as e:
-                print(f"Error: Failed to connect to GitHub API: {e.reason}", file=sys.stderr)
+                print(
+                    f"Error: Failed to connect to GitHub API: {e.reason}",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
-        
+
         # GET request - handle pagination
         all_items = []
         page = 1
@@ -124,15 +140,27 @@ class GitHubPRComments:
                     headers = dict(response.headers)
 
                     if status_code == 401:
-                        print("Error: Authentication failed. Check your GitHub token.", file=sys.stderr)
+                        print(
+                            "Error: Authentication failed. Check your GitHub token.",
+                            file=sys.stderr,
+                        )
                         sys.exit(1)
                     elif status_code == 404:
-                        print(f"Error: Not found. Check owner/repo/PR number.", file=sys.stderr)
+                        print(
+                            "Error: Not found. Check owner/repo/PR number.",
+                            file=sys.stderr,
+                        )
                         sys.exit(1)
                     elif status_code == 403:
-                        print("Error: Rate limit exceeded or access denied.", file=sys.stderr)
+                        print(
+                            "Error: Rate limit exceeded or access denied.",
+                            file=sys.stderr,
+                        )
                         if "X-RateLimit-Remaining" in headers:
-                            print(f"Rate limit remaining: {headers['X-RateLimit-Remaining']}", file=sys.stderr)
+                            print(
+                                f"Rate limit remaining: {headers['X-RateLimit-Remaining']}",
+                                file=sys.stderr,
+                            )
                         sys.exit(1)
                     elif status_code != 200:
                         print(f"Error: HTTP {status_code}", file=sys.stderr)
@@ -213,23 +241,23 @@ class GitHubPRComments:
         """
         endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{pr_number}/comments"
         comments = self._make_request(endpoint)
-        
+
         # GitHub API doesn't include resolved status in the comments endpoint
         # We need to fetch conversation status separately
         # For now, we'll fetch all comments and mark them based on conversation status
         # Note: This requires checking conversations which may need additional API calls
         return comments
-    
+
     def get_conversations(self, pr_number: int) -> List[Dict]:
         """
         Get conversation status for review comments.
-        
+
         Note: GitHub's REST API doesn't directly expose conversation resolved status.
         This method would need to use GraphQL API or check conversations endpoint.
-        
+
         Args:
             pr_number: Pull request number
-            
+
         Returns:
             List of conversation statuses (if available)
         """
@@ -250,22 +278,25 @@ class GitHubPRComments:
         """
         endpoint = f"/repos/{self.owner}/{self.repo}/pulls/{pr_number}/reviews"
         return self._make_request(endpoint)
-    
+
     def _get_resolved_comment_ids(self, pr_number: int) -> set:
         """
         Get set of resolved review comment IDs using GraphQL API.
-        
+
         Args:
             pr_number: Pull request number
-            
+
         Returns:
             Set of resolved comment IDs (empty set if GraphQL not available or error)
         """
         if not self.token:
             # Can't use GraphQL without token
-            print("Warning: No GitHub token provided. Cannot check resolved status. Showing all comments.", file=sys.stderr)
+            print(
+                "Warning: No GitHub token provided. Cannot check resolved status. Showing all comments.",
+                file=sys.stderr,
+            )
             return set()
-        
+
         try:
             # Use GraphQL API to get resolved comment IDs
             graphql_url = "https://api.github.com/graphql"
@@ -288,44 +319,51 @@ class GitHubPRComments:
               }
             }
             """
-            
-            variables = {
-                "owner": self.owner,
-                "repo": self.repo,
-                "prNumber": pr_number
-            }
-            
-            payload = json_lib.dumps({"query": query, "variables": variables}).encode("utf-8")
+
+            variables = {"owner": self.owner, "repo": self.repo, "prNumber": pr_number}
+
+            payload = json_lib.dumps({"query": query, "variables": variables}).encode(
+                "utf-8"
+            )
             # GraphQL API requires Bearer token format
             graphql_headers = {
                 "Accept": "application/json",
                 "Content-Type": "application/json",
                 "User-Agent": "PR-Comments-Fetcher",
-                "Authorization": f"Bearer {self.token}"
+                "Authorization": f"Bearer {self.token}",
             }
             req = Request(
-                graphql_url,
-                data=payload,
-                headers=graphql_headers,
-                method="POST"
+                graphql_url, data=payload, headers=graphql_headers, method="POST"
             )
-            
+
             with urlopen(req) as response:
                 if response.getcode() != 200:
                     error_body = response.read().decode("utf-8")
-                    print(f"GraphQL API returned status {response.getcode()}: {error_body}", file=sys.stderr)
+                    print(
+                        f"GraphQL API returned status {response.getcode()}: {error_body}",
+                        file=sys.stderr,
+                    )
                     return set()
-                
+
                 data = json_lib.loads(response.read().decode("utf-8"))
                 if "errors" in data:
-                    print(f"GraphQL API errors: {json_lib.dumps(data['errors'], indent=2)}", file=sys.stderr)
+                    print(
+                        f"GraphQL API errors: {json_lib.dumps(data['errors'], indent=2)}",
+                        file=sys.stderr,
+                    )
                     return set()
-                
+
                 resolved_ids = set()
-                threads = data.get("data", {}).get("repository", {}).get("pullRequest", {}).get("reviewThreads", {}).get("nodes", [])
+                threads = (
+                    data.get("data", {})
+                    .get("repository", {})
+                    .get("pullRequest", {})
+                    .get("reviewThreads", {})
+                    .get("nodes", [])
+                )
                 total_threads = len(threads)
                 resolved_threads = 0
-                
+
                 for thread in threads:
                     is_resolved = thread.get("isResolved", False)
                     if is_resolved:
@@ -336,16 +374,25 @@ class GitHubPRComments:
                             comment_id = comment.get("databaseId")
                             if comment_id:
                                 resolved_ids.add(comment_id)
-                
+
                 if total_threads > 0:
-                    print(f"Found {total_threads} review threads, {resolved_threads} resolved, {len(resolved_ids)} resolved comments", file=sys.stderr)
+                    print(
+                        f"Found {total_threads} review threads, {resolved_threads} resolved, {len(resolved_ids)} resolved comments",
+                        file=sys.stderr,
+                    )
                 else:
-                    print(f"Warning: No review threads found via GraphQL. Showing all comments.", file=sys.stderr)
-                
+                    print(
+                        "Warning: No review threads found via GraphQL. Showing all comments.",
+                        file=sys.stderr,
+                    )
+
                 return resolved_ids
         except Exception as e:
             # If GraphQL fails, return empty set (show all comments)
-            print(f"Warning: Could not fetch resolved status via GraphQL: {e}", file=sys.stderr)
+            print(
+                f"Warning: Could not fetch resolved status via GraphQL: {e}",
+                file=sys.stderr,
+            )
             return set()
 
     def fetch_all_comments(self, pr_number: int, status: str = "open") -> Dict:
@@ -372,22 +419,29 @@ class GitHubPRComments:
         if status != "all":
             # Get conversation status using GraphQL API
             resolved_comment_ids = self._get_resolved_comment_ids(pr_number)
-            
+
             filtered_review_comments = []
             for comment in review_comments:
                 comment_id = comment.get("id")
-                is_resolved = comment_id in resolved_comment_ids if resolved_comment_ids else False
-                
+                is_resolved = (
+                    comment_id in resolved_comment_ids
+                    if resolved_comment_ids
+                    else False
+                )
+
                 if status == "open" and not is_resolved:
                     filtered_review_comments.append(comment)
                 elif status == "resolved" and is_resolved:
                     filtered_review_comments.append(comment)
-            
+
             review_comments = filtered_review_comments
             if status == "open":
-                print(f"Filtering to show only open (unresolved) comments...", file=sys.stderr)
+                print(
+                    "Filtering to show only open (unresolved) comments...",
+                    file=sys.stderr,
+                )
             elif status == "resolved":
-                print(f"Filtering to show only resolved comments...", file=sys.stderr)
+                print("Filtering to show only resolved comments...", file=sys.stderr)
 
         return {
             "pr_info": pr_info,
@@ -412,7 +466,9 @@ class GitHubPRComments:
             Dictionary containing the created reply comment
         """
         if not self.token:
-            print("Error: GitHub token is required for posting replies", file=sys.stderr)
+            print(
+                "Error: GitHub token is required for posting replies", file=sys.stderr
+            )
             sys.exit(1)
 
         if comment_type == "review_comment":
@@ -456,7 +512,9 @@ class GitHubPRComments:
             Formatted string
         """
         user = comment.get("user", {})
-        user_login = user.get("login", "Unknown") if isinstance(user, dict) else str(user)
+        user_login = (
+            user.get("login", "Unknown") if isinstance(user, dict) else str(user)
+        )
         created_at = comment.get("created_at", "")
         body = comment.get("body", "")
         # Handle None body
@@ -482,7 +540,7 @@ class GitHubPRComments:
             diff_hunk = comment.get("diff_hunk", "")
             in_reply_to_id = comment.get("in_reply_to_id")
             pull_request_review_id = comment.get("pull_request_review_id")
-            
+
             result = f"[Review Comment] {user_login} on {date_str}\n"
             result += f"File: {path}"
             if line:
@@ -492,15 +550,15 @@ class GitHubPRComments:
             if start_line:
                 result += f" (start line {start_line})"
             result += "\n"
-            
+
             if in_reply_to_id:
                 result += f"Reply to comment ID: {in_reply_to_id}\n"
             if pull_request_review_id:
                 result += f"Review ID: {pull_request_review_id}\n"
-                
+
             if diff_hunk:
                 result += f"\nCode Context:\n{diff_hunk}\n"
-            
+
             if body:
                 result += f"\nComment:\n{body}\n"
             else:
@@ -529,7 +587,6 @@ class GitHubPRComments:
             data: Dictionary containing PR info and comments
             output_file: Optional file path to write CSV to (default: stdout)
         """
-        import io
 
         pr_info = data["pr_info"]
         issue_comments = data["issue_comments"]
@@ -545,60 +602,105 @@ class GitHubPRComments:
             writer = csv.writer(output)
 
             # Write PR info header
-            writer.writerow(["PR Number", "PR Title", "Author", "State", "Created At", "URL"])
-            writer.writerow([
-                pr_info["number"],
-                pr_info["title"],
-                pr_info["user"]["login"] if isinstance(pr_info["user"], dict) else "Unknown",
-                pr_info["state"],
-                pr_info["created_at"],
-                pr_info["html_url"],
-            ])
+            writer.writerow(
+                ["PR Number", "PR Title", "Author", "State", "Created At", "URL"]
+            )
+            writer.writerow(
+                [
+                    pr_info["number"],
+                    pr_info["title"],
+                    pr_info["user"]["login"]
+                    if isinstance(pr_info["user"], dict)
+                    else "Unknown",
+                    pr_info["state"],
+                    pr_info["created_at"],
+                    pr_info["html_url"],
+                ]
+            )
             writer.writerow([])  # Empty row
 
             # Write issue comments
             if issue_comments:
-                writer.writerow(["Comment Type", "ID", "Author", "Created At", "Body", "URL"])
+                writer.writerow(
+                    ["Comment Type", "ID", "Author", "Created At", "Body", "URL"]
+                )
                 for comment in issue_comments:
-                    writer.writerow([
-                        "issue_comment",
-                        comment.get("id", ""),
-                        comment.get("user", {}).get("login", "Unknown") if isinstance(comment.get("user"), dict) else "Unknown",
-                        comment.get("created_at", ""),
-                        comment.get("body", "").replace("\n", " ").replace("\r", ""),
-                        comment.get("html_url", ""),
-                    ])
+                    writer.writerow(
+                        [
+                            "issue_comment",
+                            comment.get("id", ""),
+                            comment.get("user", {}).get("login", "Unknown")
+                            if isinstance(comment.get("user"), dict)
+                            else "Unknown",
+                            comment.get("created_at", ""),
+                            comment.get("body", "")
+                            .replace("\n", " ")
+                            .replace("\r", ""),
+                            comment.get("html_url", ""),
+                        ]
+                    )
                 writer.writerow([])  # Empty row
 
             # Write review comments
             if review_comments:
-                writer.writerow(["Comment Type", "ID", "Author", "Created At", "File", "Line", "Body", "URL"])
+                writer.writerow(
+                    [
+                        "Comment Type",
+                        "ID",
+                        "Author",
+                        "Created At",
+                        "File",
+                        "Line",
+                        "Body",
+                        "URL",
+                    ]
+                )
                 for comment in review_comments:
-                    writer.writerow([
-                        "review_comment",
-                        comment.get("id", ""),
-                        comment.get("user", {}).get("login", "Unknown") if isinstance(comment.get("user"), dict) else "Unknown",
-                        comment.get("created_at", ""),
-                        comment.get("path", ""),
-                        comment.get("line", ""),
-                        comment.get("body", "").replace("\n", " ").replace("\r", ""),
-                        comment.get("html_url", ""),
-                    ])
+                    writer.writerow(
+                        [
+                            "review_comment",
+                            comment.get("id", ""),
+                            comment.get("user", {}).get("login", "Unknown")
+                            if isinstance(comment.get("user"), dict)
+                            else "Unknown",
+                            comment.get("created_at", ""),
+                            comment.get("path", ""),
+                            comment.get("line", ""),
+                            comment.get("body", "")
+                            .replace("\n", " ")
+                            .replace("\r", ""),
+                            comment.get("html_url", ""),
+                        ]
+                    )
                 writer.writerow([])  # Empty row
 
             # Write reviews
             if reviews:
-                writer.writerow(["Comment Type", "ID", "Author", "State", "Created At", "Body", "URL"])
+                writer.writerow(
+                    [
+                        "Comment Type",
+                        "ID",
+                        "Author",
+                        "State",
+                        "Created At",
+                        "Body",
+                        "URL",
+                    ]
+                )
                 for review in reviews:
-                    writer.writerow([
-                        "review",
-                        review.get("id", ""),
-                        review.get("user", {}).get("login", "Unknown") if isinstance(review.get("user"), dict) else "Unknown",
-                        review.get("state", ""),
-                        review.get("submitted_at") or review.get("created_at", ""),
-                        review.get("body", "").replace("\n", " ").replace("\r", ""),
-                        review.get("html_url", ""),
-                    ])
+                    writer.writerow(
+                        [
+                            "review",
+                            review.get("id", ""),
+                            review.get("user", {}).get("login", "Unknown")
+                            if isinstance(review.get("user"), dict)
+                            else "Unknown",
+                            review.get("state", ""),
+                            review.get("submitted_at") or review.get("created_at", ""),
+                            review.get("body", "").replace("\n", " ").replace("\r", ""),
+                            review.get("html_url", ""),
+                        ]
+                    )
         finally:
             if output_file and output:
                 output.close()
@@ -614,12 +716,14 @@ class GitHubPRComments:
         pr_info = data["pr_info"]
         issue_comments = data["issue_comments"]
         review_comments = data["review_comments"]
-        reviews = data.get("reviews", [])
+        # reviews = data.get("reviews", [])  # Unused, kept for future use
 
         # PR Header
         print(f"\n{'=' * 100}")
         print(f"PR #{pr_info['number']}: {pr_info['title']}")
-        print(f"Author: {pr_info['user']['login']} | State: {pr_info['state']} | Created: {pr_info['created_at']}")
+        print(
+            f"Author: {pr_info['user']['login']} | State: {pr_info['state']} | Created: {pr_info['created_at']}"
+        )
         print(f"URL: {pr_info['html_url']}")
         print(f"{'=' * 100}\n")
 
@@ -629,7 +733,7 @@ class GitHubPRComments:
                 return ""
             text = text.replace("\n", " ").replace("\r", "")
             if len(text) > max_len:
-                return text[:max_len - 3] + "..."
+                return text[: max_len - 3] + "..."
             return text
 
         # Issue Comments Table
@@ -641,8 +745,16 @@ class GitHubPRComments:
             print(f"{'─' * 100}")
             for comment in issue_comments:
                 comment_id = str(comment.get("id", "N/A"))
-                user = comment.get("user", {}).get("login", "Unknown") if isinstance(comment.get("user"), dict) else "Unknown"
-                created = comment.get("created_at", "")[:19] if comment.get("created_at") else "Unknown"
+                user = (
+                    comment.get("user", {}).get("login", "Unknown")
+                    if isinstance(comment.get("user"), dict)
+                    else "Unknown"
+                )
+                created = (
+                    comment.get("created_at", "")[:19]
+                    if comment.get("created_at")
+                    else "Unknown"
+                )
                 body = truncate(comment.get("body", ""), 48)
                 print(f"{comment_id:<12} {user:<20} {created:<20} {body:<48}")
             print(f"{'─' * 100}\n")
@@ -656,7 +768,11 @@ class GitHubPRComments:
             print(f"{'─' * 100}")
             for comment in review_comments:
                 comment_id = str(comment.get("id", "N/A"))
-                user = comment.get("user", {}).get("login", "Unknown") if isinstance(comment.get("user"), dict) else "Unknown"
+                user = (
+                    comment.get("user", {}).get("login", "Unknown")
+                    if isinstance(comment.get("user"), dict)
+                    else "Unknown"
+                )
                 path = comment.get("path", "Unknown")
                 if len(path) > 33:
                     path = "..." + path[-30:]
@@ -668,7 +784,9 @@ class GitHubPRComments:
         # Summary (reviews not shown in table view - only comments are displayed)
         total = len(issue_comments) + len(review_comments)
         print(f"{'=' * 100}")
-        print(f"SUMMARY: {len(issue_comments)} Issue Comments | {len(review_comments)} Review Comments | Total: {total}")
+        print(
+            f"SUMMARY: {len(issue_comments)} Issue Comments | {len(review_comments)} Review Comments | Total: {total}"
+        )
         print(f"{'=' * 100}\n")
 
     def print_all_comments(self, data: Dict):
@@ -717,7 +835,7 @@ class GitHubPRComments:
         # Summary
         total = len(issue_comments) + len(review_comments) + len(reviews)
         print(f"\n{'=' * 80}")
-        print(f"SUMMARY")
+        print("SUMMARY")
         print(f"{'=' * 80}")
         print(f"Issue Comments: {len(issue_comments)}")
         print(f"Review Comments: {len(review_comments)}")
@@ -836,7 +954,10 @@ def main():
             sys.exit(1)
     else:
         if not args.repo or not args.pr_number:
-            print("Error: Must provide both repo and pr_number when using owner format", file=sys.stderr)
+            print(
+                "Error: Must provide both repo and pr_number when using owner format",
+                file=sys.stderr,
+            )
             parser.print_help()
             sys.exit(1)
         owner = args.owner_or_url
@@ -852,7 +973,10 @@ def main():
             print("Error: --comment-type is required with --reply", file=sys.stderr)
             sys.exit(1)
         if not args.reply_body and not args.reply_body_file:
-            print("Error: --reply-body or --reply-body-file is required with --reply", file=sys.stderr)
+            print(
+                "Error: --reply-body or --reply-body-file is required with --reply",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if not args.token:
             print("Error: --token is required for --reply", file=sys.stderr)
@@ -863,8 +987,10 @@ def main():
             with open(args.reply_body_file, "r", encoding="utf-8") as f:
                 reply_body = f.read()
 
-        result = client.reply_to_comment(pr_number, args.reply, args.comment_type, reply_body)
-        print(f"Reply posted successfully!")
+        result = client.reply_to_comment(
+            pr_number, args.reply, args.comment_type, reply_body
+        )
+        print("Reply posted successfully!")
         print(f"Comment ID: {result.get('id')}")
         print(f"URL: {result.get('html_url')}")
         sys.exit(0)
@@ -889,7 +1015,11 @@ def main():
                 "review_comment": "review_comment",
                 "review": "review",
             }
-            print(client.format_comment(comment, comment_type_map.get(args.comment_type, "issue")))
+            print(
+                client.format_comment(
+                    comment, comment_type_map.get(args.comment_type, "issue")
+                )
+            )
         sys.exit(0)
 
     # Fetch all comments (with status filter)
@@ -902,7 +1032,9 @@ def main():
             "pr": {
                 "number": data["pr_info"]["number"],
                 "title": data["pr_info"]["title"],
-                "author": data["pr_info"]["user"]["login"] if isinstance(data["pr_info"]["user"], dict) else "Unknown",
+                "author": data["pr_info"]["user"]["login"]
+                if isinstance(data["pr_info"]["user"], dict)
+                else "Unknown",
                 "state": data["pr_info"]["state"],
                 "created_at": data["pr_info"]["created_at"],
                 "url": data["pr_info"]["html_url"],
@@ -911,7 +1043,9 @@ def main():
                 "issue_comments": [
                     {
                         "id": c.get("id"),
-                        "user": c.get("user", {}).get("login", "Unknown") if isinstance(c.get("user"), dict) else "Unknown",
+                        "user": c.get("user", {}).get("login", "Unknown")
+                        if isinstance(c.get("user"), dict)
+                        else "Unknown",
                         "created_at": c.get("created_at"),
                         "body": c.get("body", ""),
                         "url": c.get("html_url"),
@@ -921,7 +1055,9 @@ def main():
                 "review_comments": [
                     {
                         "id": c.get("id"),
-                        "user": c.get("user", {}).get("login", "Unknown") if isinstance(c.get("user"), dict) else "Unknown",
+                        "user": c.get("user", {}).get("login", "Unknown")
+                        if isinstance(c.get("user"), dict)
+                        else "Unknown",
                         "created_at": c.get("created_at"),
                         "path": c.get("path"),
                         "line": c.get("line"),
@@ -934,7 +1070,9 @@ def main():
                 "reviews": [
                     {
                         "id": r.get("id"),
-                        "user": r.get("user", {}).get("login", "Unknown") if isinstance(r.get("user"), dict) else "Unknown",
+                        "user": r.get("user", {}).get("login", "Unknown")
+                        if isinstance(r.get("user"), dict)
+                        else "Unknown",
                         "state": r.get("state"),
                         "created_at": r.get("created_at"),
                         "body": r.get("body", ""),
@@ -947,7 +1085,9 @@ def main():
                 "total_issue_comments": len(data["issue_comments"]),
                 "total_review_comments": len(data["review_comments"]),
                 "total_reviews": len(data["reviews"]),
-                "total_comments": len(data["issue_comments"]) + len(data["review_comments"]) + len(data["reviews"]),
+                "total_comments": len(data["issue_comments"])
+                + len(data["review_comments"])
+                + len(data["reviews"]),
             },
         }
         print(json_lib.dumps(json_output, indent=2))
@@ -962,4 +1102,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

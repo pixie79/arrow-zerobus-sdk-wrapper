@@ -237,3 +237,68 @@ async fn test_user_journey_concurrent_access() {
     }
 }
 
+#[tokio::test]
+async fn test_success_return_when_writer_disabled() {
+    // Test that send_batch returns success when writer is disabled
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+    
+    let temp_dir = TempDir::new().unwrap();
+    let debug_output_dir = temp_dir.path().to_path_buf();
+    
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(debug_output_dir)
+    .with_zerobus_writer_disabled(true);
+    // No credentials required
+
+    let wrapper_result = ZerobusWrapper::new(config).await;
+    assert!(wrapper_result.is_ok(), "Wrapper should initialize without credentials");
+    
+    let wrapper = wrapper_result.unwrap();
+    let batch = create_test_record_batch();
+    
+    // Send batch - should succeed immediately without network calls
+    let result = wrapper.send_batch(batch).await;
+    assert!(result.is_ok(), "send_batch should succeed when writer disabled");
+    
+    let transmission_result = result.unwrap();
+    assert!(transmission_result.success, "Transmission result should indicate success");
+    assert_eq!(transmission_result.attempts, 1, "Should have 1 attempt (no retries when disabled)");
+}
+
+#[tokio::test]
+async fn test_multiple_batches_succeed_without_credentials() {
+    // Test that multiple batches can be sent successfully without credentials when writer disabled
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+    
+    let temp_dir = TempDir::new().unwrap();
+    let debug_output_dir = temp_dir.path().to_path_buf();
+    
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(debug_output_dir)
+    .with_zerobus_writer_disabled(true);
+    // No credentials required
+
+    let wrapper_result = ZerobusWrapper::new(config).await;
+    assert!(wrapper_result.is_ok(), "Wrapper should initialize without credentials");
+    
+    let wrapper = wrapper_result.unwrap();
+    
+    // Send multiple batches
+    for i in 0..5 {
+        let batch = create_test_record_batch();
+        let result = wrapper.send_batch(batch).await;
+        assert!(result.is_ok(), "Batch {} should succeed", i);
+        
+        let transmission_result = result.unwrap();
+        assert!(transmission_result.success, "Batch {} should indicate success", i);
+    }
+}
+

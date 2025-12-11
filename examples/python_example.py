@@ -13,7 +13,9 @@ from arrow_zerobus_sdk_wrapper import ZerobusWrapper, ZerobusError
 async def main():
     """Main example function."""
     # Get configuration from environment variables
-    endpoint = os.getenv("ZEROBUS_ENDPOINT", "https://your-workspace.cloud.databricks.com")
+    endpoint = os.getenv(
+        "ZEROBUS_ENDPOINT", "https://your-workspace.cloud.databricks.com"
+    )
     table_name = os.getenv("ZEROBUS_TABLE_NAME", "my_table")
     client_id = os.getenv("ZEROBUS_CLIENT_ID", "your_client_id")
     client_secret = os.getenv("ZEROBUS_CLIENT_SECRET", "your_client_secret")
@@ -37,11 +39,13 @@ async def main():
 
     # Create Arrow RecordBatch
     print("\nCreating Arrow RecordBatch...")
-    schema = pa.schema([
-        pa.field("id", pa.int64()),
-        pa.field("name", pa.string()),
-        pa.field("score", pa.float64()),
-    ])
+    schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("name", pa.string()),
+            pa.field("score", pa.float64()),
+        ]
+    )
 
     arrays = [
         pa.array([1, 2, 3, 4, 5], type=pa.int64()),
@@ -50,20 +54,22 @@ async def main():
     ]
 
     batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-    print(f"✅ Created RecordBatch with {batch.num_rows} rows and {batch.num_columns} columns")
+    print(
+        f"✅ Created RecordBatch with {batch.num_rows} rows and {batch.num_columns} columns"
+    )
 
     # Send batch to Zerobus
     print("\nSending batch to Zerobus...")
     try:
         result = wrapper.send_batch(batch)
-        
+
         if result.success:
-            print(f"✅ Batch sent successfully!")
+            print("✅ Batch sent successfully!")
             print(f"   Latency: {result.latency_ms}ms")
             print(f"   Size: {result.batch_size_bytes} bytes")
             print(f"   Attempts: {result.attempts}")
         else:
-            print(f"❌ Transmission failed")
+            print("❌ Transmission failed")
             print(f"   Error: {result.error}")
             print(f"   Attempts: {result.attempts}")
     except ZerobusError as e:
@@ -80,7 +86,9 @@ async def main():
 
 async def main_with_context_manager():
     """Example using async context manager."""
-    endpoint = os.getenv("ZEROBUS_ENDPOINT", "https://your-workspace.cloud.databricks.com")
+    endpoint = os.getenv(
+        "ZEROBUS_ENDPOINT", "https://your-workspace.cloud.databricks.com"
+    )
     table_name = os.getenv("ZEROBUS_TABLE_NAME", "my_table")
     client_id = os.getenv("ZEROBUS_CLIENT_ID", "your_client_id")
     client_secret = os.getenv("ZEROBUS_CLIENT_SECRET", "your_client_secret")
@@ -95,16 +103,18 @@ async def main_with_context_manager():
         unity_catalog_url=unity_catalog_url,
     ) as wrapper:
         # Create and send batch
-        schema = pa.schema([
-            pa.field("id", pa.int64()),
-            pa.field("name", pa.string()),
-        ])
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("name", pa.string()),
+            ]
+        )
         arrays = [
             pa.array([1, 2, 3], type=pa.int64()),
             pa.array(["Alice", "Bob", "Charlie"], type=pa.string()),
         ]
         batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-        
+
         result = wrapper.send_batch(batch)
         print(f"Result: success={result.success}, latency={result.latency_ms}ms")
 
@@ -112,7 +122,6 @@ async def main_with_context_manager():
 if __name__ == "__main__":
     # Run the main example
     asyncio.run(main())
-    
+
     # Or use context manager
     # asyncio.run(main_with_context_manager())
-

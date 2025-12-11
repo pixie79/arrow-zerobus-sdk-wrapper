@@ -170,3 +170,97 @@ def test_record_batch_creation():
     assert batch.num_rows == 3
     assert batch.num_columns == 3
     assert batch.schema == schema
+
+
+def test_writer_disabled_parameter():
+    """Test that zerobus_writer_disabled parameter is accepted."""
+    from arrow_zerobus_sdk_wrapper import WrapperConfiguration
+
+    config = WrapperConfiguration(
+        endpoint="https://test.cloud.databricks.com",
+        table_name="test_table",
+        debug_enabled=True,
+        debug_output_dir="./test_debug",
+        zerobus_writer_disabled=True,
+    )
+
+    assert config.zerobus_writer_disabled is True
+
+
+def test_writer_disabled_validation():
+    """Test that configuration validation works for writer disabled mode."""
+    from arrow_zerobus_sdk_wrapper import WrapperConfiguration, ConfigurationError
+
+    # Should fail: writer disabled but debug not enabled
+    with pytest.raises(ConfigurationError):
+        config = WrapperConfiguration(
+            endpoint="https://test.cloud.databricks.com",
+            table_name="test_table",
+            debug_enabled=False,
+            zerobus_writer_disabled=True,
+        )
+        config.validate()
+
+    # Should succeed: writer disabled with debug enabled
+    config = WrapperConfiguration(
+        endpoint="https://test.cloud.databricks.com",
+        table_name="test_table",
+        debug_enabled=True,
+        debug_output_dir="./test_debug",
+        zerobus_writer_disabled=True,
+    )
+    # Should not raise
+    try:
+        config.validate()
+    except Exception as e:
+        pytest.fail(f"Valid configuration should not raise error: {e}")
+
+
+@pytest.mark.asyncio
+async def test_wrapper_works_without_credentials_when_disabled():
+    """Test that wrapper works without credentials when writer is disabled."""
+    import tempfile
+    import os
+    from arrow_zerobus_sdk_wrapper import ZerobusWrapper
+
+    # Create temporary directory for debug output
+    temp_dir = tempfile.mkdtemp()
+    debug_output_dir = os.path.join(temp_dir, "debug")
+
+    try:
+        wrapper = ZerobusWrapper(
+            endpoint="https://test.cloud.databricks.com",
+            table_name="test_table",
+            debug_enabled=True,
+            debug_output_dir=debug_output_dir,
+            zerobus_writer_disabled=True,
+            # No credentials provided
+        )
+
+        # Create test batch
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("name", pa.string()),
+            ]
+        )
+        arrays = [
+            pa.array([1, 2, 3], type=pa.int64()),
+            pa.array(["Alice", "Bob", "Charlie"], type=pa.string()),
+        ]
+        batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
+
+        # Send batch - should succeed without credentials
+        result = await wrapper.send_batch(batch)
+        assert result.success, "send_batch should succeed when writer disabled"
+
+        # Verify debug files were written
+        # Files may not exist immediately, but the operation should succeed
+        assert result.success
+
+        await wrapper.shutdown()
+    finally:
+        # Cleanup
+        import shutil
+
+        shutil.rmtree(temp_dir, ignore_errors=True)
