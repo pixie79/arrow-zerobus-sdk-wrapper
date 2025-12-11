@@ -55,36 +55,64 @@ pub fn rust_error_to_python_error(error: ZerobusError) -> PyErr {
 }
 
 /// Parse error string to ZerobusError
-/// 
+///
 /// Handles strings like "ConversionError: message" or plain "message"
 fn parse_error_string(error_msg: String) -> ZerobusError {
     if error_msg.starts_with("ConversionError:") {
         ZerobusError::ConversionError(
-            error_msg.strip_prefix("ConversionError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("ConversionError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("TransmissionError:") {
         ZerobusError::TransmissionError(
-            error_msg.strip_prefix("TransmissionError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("TransmissionError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("ConnectionError:") {
         ZerobusError::ConnectionError(
-            error_msg.strip_prefix("ConnectionError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("ConnectionError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("AuthenticationError:") {
         ZerobusError::AuthenticationError(
-            error_msg.strip_prefix("AuthenticationError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("AuthenticationError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("ConfigurationError:") {
         ZerobusError::ConfigurationError(
-            error_msg.strip_prefix("ConfigurationError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("ConfigurationError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("RetryExhausted:") {
         ZerobusError::RetryExhausted(
-            error_msg.strip_prefix("RetryExhausted:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("RetryExhausted:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else if error_msg.starts_with("TokenRefreshError:") {
         ZerobusError::TokenRefreshError(
-            error_msg.strip_prefix("TokenRefreshError:").unwrap().trim().to_string(),
+            error_msg
+                .strip_prefix("TokenRefreshError:")
+                .unwrap()
+                .trim()
+                .to_string(),
         )
     } else {
         // Default to ConversionError if no prefix
