@@ -517,3 +517,140 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to crates.io
+  # This job runs only after all CI checks pass successfully and release tag is created
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: [format-lint, build, test-rust-ubuntu, test-rust-other, test-python, release]
+    # Note: All checks including release tag creation must pass before publishing
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write  # Required to create and push git tags
+      issues: write    # Required to close referenced issues
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for git tag operations
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for pushing tags and closing issues
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+      
+      - name: Verify release tag exists
+        run: |
+          if ! git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+            echo "ERROR: Release tag v${{ steps.version.outputs.version }} does not exist"
+            echo "The release job should have created this tag. Publishing aborted."
+            exit 1
+          fi
+          echo "✅ Release tag v${{ steps.version.outputs.version }} exists (created by release job)"
+      
+      - name: Extract referenced issues from commits
+        id: extract-issues
+        run: |
+          # Get commits since last tag (or all commits if no tag exists)
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"%s %b" --no-merges)
+          else
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s %b" --no-merges)
+          fi
+          
+          # Extract issue numbers from commit messages
+          # Patterns: "closes #123", "fixes #456", "resolves #789", or just "#123"
+          ISSUES=$(echo "$COMMITS" | grep -oE '(closes|fixes|resolves|implements|addresses)?\s*#?[0-9]+' | grep -oE '[0-9]+' | sort -u | tr '\n' ' ' || echo "")
+          
+          if [ -z "$ISSUES" ]; then
+            echo "No referenced issues found in commits"
+            echo "issues=" >> $GITHUB_OUTPUT
+          else
+            echo "Found referenced issues: $ISSUES"
+            echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Close referenced issues
+        if: steps.extract-issues.outputs.issues != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ISSUES="${{ steps.extract-issues.outputs.issues }}"
+          
+          # Install gh CLI if not available
+          if ! command -v gh &> /dev/null; then
+            echo "Installing GitHub CLI..."
+            type -p curl >/dev/null || (apt update && apt install curl -y)
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && apt update \
+            && apt install gh -y
+          fi
+          
+          for issue in $ISSUES; do
+            echo "Checking issue #$issue..."
+            
+            # Check if issue exists and is open
+            ISSUE_STATE=$(gh issue view $issue --repo ${{ github.repository }} --json state -q .state 2>/dev/null || echo "notfound")
+            
+            if [ "$ISSUE_STATE" = "notfound" ]; then
+              echo "  Issue #$issue not found, skipping"
+              continue
+            elif [ "$ISSUE_STATE" = "closed" ]; then
+              echo "  Issue #$issue is already closed, skipping"
+              continue
+            elif [ "$ISSUE_STATE" = "open" ]; then
+              echo "  Closing issue #$issue..."
+              gh issue close $issue --repo ${{ github.repository }} --comment "Closed automatically as part of release v$VERSION. This issue was referenced in the release commits." || echo "  Failed to close issue #$issue"
+            fi
+          done
+      
+      - name: Verify package contents
+        run: |
+          # List files that would be included in the package (doesn't create package)
+          # Ensure .venv directories are excluded (they should be in .cargoignore and .gitignore)
+          cargo package --list
+          # Verify .venv directories are not included
+          if cargo package --list 2>&1 | grep -q "\.venv"; then
+            echo "ERROR: .venv directories found in package list!"
+            cargo package --list 2>&1 | grep "\.venv"
+            exit 1
+          fi
+      
+      - name: Build crate package
+        run: |
+          # Create the package file (.crate)
+          cargo package
+      
+      - name: Verify publish readiness (dry-run)
+        run: |
+          # Use cargo publish --dry-run to verify everything is ready for publishing
+          # This checks metadata, dependencies, and registry compatibility
+          # CARGO_REGISTRY_TOKEN is the recommended environment variable name per crates.io docs
+          cargo publish --dry-run --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}

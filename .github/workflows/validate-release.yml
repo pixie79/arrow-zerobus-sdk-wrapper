@@ -1,0 +1,215 @@
+name: Validate Release
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  pull_request_review:
+    types: [submitted]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate-changelog:
+    name: Validate CHANGELOG and Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for conventional commits analysis
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate PR title follows conventional commits
+        uses: amannn/action-semantic-pull-request@v6
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            chore
+            build
+            ci
+          requireScope: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from Cargo.toml
+        id: cargo-version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Cargo.toml version: $VERSION"
+
+      - name: Extract version from pyproject.toml
+        id: pyproject-version
+        run: |
+          VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "pyproject.toml version: $VERSION"
+
+      - name: Extract version from CHANGELOG.md
+        id: changelog-version
+        run: |
+          # Get the first version that's not "Unreleased"
+          VERSION=$(grep -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | head -1 | sed 's/^## \[\(.*\)\].*/\1/')
+          if [ -z "$VERSION" ]; then
+            echo "No version found in CHANGELOG.md (only Unreleased entries)"
+            echo "version=" >> $GITHUB_OUTPUT
+          else
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "CHANGELOG.md version: $VERSION"
+          fi
+
+      - name: Validate versions match
+        run: |
+          CARGO_VERSION="${{ steps.cargo-version.outputs.version }}"
+          PYPROJECT_VERSION="${{ steps.pyproject-version.outputs.version }}"
+          CHANGELOG_VERSION="${{ steps.changelog-version.outputs.version }}"
+          
+          # Check Cargo.toml matches pyproject.toml
+          if [ "$CARGO_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "❌ Version mismatch detected!"
+            echo "   Cargo.toml version: $CARGO_VERSION"
+            echo "   pyproject.toml version: $PYPROJECT_VERSION"
+            echo ""
+            echo "The Python bindings version must match the Rust crate version."
+            exit 1
+          fi
+          
+          # Check Cargo.toml matches CHANGELOG.md (if CHANGELOG has a version)
+          if [ -z "$CHANGELOG_VERSION" ]; then
+            echo "⚠️  CHANGELOG.md only has [Unreleased] entries. This is acceptable for feature PRs."
+            echo "✅ Cargo.toml and pyproject.toml versions match: $CARGO_VERSION"
+            echo "✅ Version validation skipped for CHANGELOG (will be validated on release)"
+          elif [ "$CARGO_VERSION" != "$CHANGELOG_VERSION" ]; then
+            echo "❌ Version mismatch detected!"
+            echo "   Cargo.toml version: $CARGO_VERSION"
+            echo "   pyproject.toml version: $PYPROJECT_VERSION"
+            echo "   CHANGELOG.md version: $CHANGELOG_VERSION"
+            echo ""
+            echo "Please ensure all versions match before merging."
+            exit 1
+          else
+            echo "✅ All versions match: $CARGO_VERSION"
+          fi
+
+      - name: Validate CHANGELOG format
+        run: |
+          # Check that CHANGELOG follows Keep a Changelog format
+          if ! grep -q "^## \[Unreleased\]" CHANGELOG.md; then
+            echo "❌ CHANGELOG.md must start with '## [Unreleased]' section"
+            exit 1
+          fi
+          
+          # Check that release entries follow format: ## [X.Y.Z] - YYYY-MM-DD
+          if grep -E '^## \[[0-9]+\.[0-9]+\.[0-9]+\]' CHANGELOG.md | grep -vE '^## \[[0-9]+\.[0-9]+\.[0-9]+\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$' | grep -vE '^## \[[0-9]+\.[0-9]+\.[0-9]+\] - Unreleased$'; then
+            echo "❌ CHANGELOG.md release entries must follow format: '## [X.Y.Z] - YYYY-MM-DD' or '## [X.Y.Z] - Unreleased'"
+            exit 1
+          fi
+          
+          # Check that sections use conventional commit types
+          VALID_SECTIONS="Added|Changed|Deprecated|Removed|Fixed|Security"
+          if grep -E '^### (Added|Changed|Deprecated|Removed|Fixed|Security)$' CHANGELOG.md | grep -vE "^### ($VALID_SECTIONS)$"; then
+            echo "⚠️  Warning: CHANGELOG.md contains non-standard sections"
+          fi
+          
+          echo "✅ CHANGELOG.md format is valid"
+
+      - name: Check for conventional commit types in CHANGELOG
+        run: |
+          # Validate that CHANGELOG entries use conventional commit prefixes
+          # This is a soft check - just warn if entries don't follow pattern
+          echo "Checking CHANGELOG entries follow conventional commits format..."
+          if grep -E '^- \*\*' CHANGELOG.md | head -5; then
+            echo "✅ CHANGELOG entries found"
+          fi
+
+  update-release-info:
+    name: Update Release Info on Merge
+    runs-on: ubuntu-latest
+    if: |
+      github.event.pull_request.merged == true &&
+      (github.event.pull_request.base.ref == 'main' || github.event.pull_request.base.ref == 'master')
+    needs: [validate-changelog]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # token is automatically available when permissions are set above
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Get current date
+        id: date
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+          echo "Release date: $DATE"
+
+      - name: Extract version from Cargo.toml
+        id: cargo-version
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Cargo.toml version: $VERSION"
+
+      - name: Update pyproject.toml version (if needed)
+        run: |
+          VERSION="${{ steps.cargo-version.outputs.version }}"
+          # Update both [project] and [project.metadata] version fields
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+          echo "✅ Updated pyproject.toml version to $VERSION"
+
+      - name: Update CHANGELOG with release date
+        run: |
+          VERSION="${{ steps.cargo-version.outputs.version }}"
+          DATE="${{ steps.date.outputs.date }}"
+          
+          # Update "Unreleased" to version with date, or update existing version entry
+          if grep -q "^## \[Unreleased\]" CHANGELOG.md; then
+            # Replace first [Unreleased] with version and date
+            sed -i "0,/^## \[Unreleased\]/s/^## \[Unreleased\]/## [$VERSION] - $DATE/" CHANGELOG.md
+            echo "✅ Updated CHANGELOG.md: [Unreleased] -> [$VERSION] - $DATE"
+          elif grep -q "^## \[$VERSION\] - Unreleased" CHANGELOG.md; then
+            # Update existing version entry with date
+            sed -i "s/^## \[$VERSION\] - Unreleased/## [$VERSION] - $DATE/" CHANGELOG.md
+            echo "✅ Updated CHANGELOG.md: [$VERSION] - Unreleased -> [$VERSION] - $DATE"
+          else
+            echo "⚠️  No [Unreleased] or [$VERSION] - Unreleased entry found in CHANGELOG.md"
+            echo "Skipping date update"
+          fi
+
+      - name: Commit and push changes
+        run: |
+          CHANGED_FILES=""
+          if ! git diff --quiet CHANGELOG.md; then
+            CHANGED_FILES="CHANGELOG.md"
+          fi
+          if ! git diff --quiet pyproject.toml; then
+            if [ -n "$CHANGED_FILES" ]; then
+              CHANGED_FILES="$CHANGED_FILES pyproject.toml"
+            else
+              CHANGED_FILES="pyproject.toml"
+            fi
+          fi
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changes to commit"
+          else
+            git add $CHANGED_FILES
+            git commit -m "chore(release): update release info for ${{ steps.cargo-version.outputs.version }}"
+            git push origin ${{ github.event.pull_request.base.ref }}
+            echo "✅ Pushed release info update to ${{ github.event.pull_request.base.ref }}: $CHANGED_FILES"
+          fi
