@@ -228,3 +228,4 @@ def test_transmission_result_backward_compatibility():
     assert result.total_rows == 0
     assert result.successful_count == 0
     assert result.failed_count == 0
+# test

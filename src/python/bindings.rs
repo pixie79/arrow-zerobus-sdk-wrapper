@@ -558,19 +558,7 @@ impl PyTransmissionResult {
     ///     message: Optional message (ignored, kept for backward compatibility)
     #[new]
     #[allow(clippy::too_many_arguments)]
-    #[pyo3(signature = (
-        success,
-        error=None,
-        attempts=1,
-        latency_ms=None,
-        batch_size_bytes=0,
-        failed_rows=None,
-        successful_rows=None,
-        total_rows=0,
-        successful_count=0,
-        failed_count=0,
-        message=None
-    ))]
+    #[pyo3(signature = (success, *, error=None, attempts=1, latency_ms=None, batch_size_bytes=0, failed_rows=None, successful_rows=None, total_rows=0, successful_count=0, failed_count=0, _message=None))]
     pub fn new(
         success: bool,
         error: Option<String>,
