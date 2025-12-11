@@ -582,7 +582,7 @@ impl PyTransmissionResult {
         total_rows: usize,
         successful_count: usize,
         failed_count: usize,
-        message: Option<String>,
+        _message: Option<String>,
     ) -> Self {
         // Convert string error messages to ZerobusError
         let rust_failed_rows = failed_rows.map(|rows| {
