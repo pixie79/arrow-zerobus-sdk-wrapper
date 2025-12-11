@@ -167,20 +167,6 @@ async def main():
                 print(f"  {error_type}: {len(indices)} rows")
     
     await wrapper.shutdown()
-        pa.field("name", pa.string()),
-    ])
-    arrays = [
-        pa.array([1, 2, 3], type=pa.int64()),
-        pa.array(["Alice", "Bob", "Charlie"], type=pa.string()),
-    ]
-    batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
-    
-    result = await wrapper.send_batch(batch)
-    
-    if result.success:
-        print(f"Batch sent successfully in {result.latency_ms}ms")
-    
-    await wrapper.shutdown()
 
 asyncio.run(main())
 ```
