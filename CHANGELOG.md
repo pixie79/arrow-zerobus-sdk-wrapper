@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2025-12-12
+
+### Fixed
+- **fix**: Unity Catalog table name validation - Fixed table name validation to support Unity Catalog format (`catalog.schema.table`, `schema.table`, or `table`). Dots are now allowed as separators between catalog, schema, and table name parts, with each part validated separately for ASCII letters, digits, and underscores only.
+
 ## [0.8.0] - 2025-12-12
 
 ### Added

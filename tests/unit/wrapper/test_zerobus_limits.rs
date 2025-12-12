@@ -128,7 +128,18 @@ fn test_record_size_at_limit() {
 #[test]
 fn test_table_name_ascii_only_valid() {
     // Valid table names: ASCII letters, digits, underscores
-    let valid_names = vec!["table1", "my_table", "Table123", "TABLE_NAME", "a1b2c3"];
+    // Supports Unity Catalog format: catalog.schema.table, schema.table, or table
+    let valid_names = vec![
+        "table1",                    // Simple table name
+        "my_table",                  // Table with underscore
+        "Table123",                  // Mixed case
+        "TABLE_NAME",                // Uppercase
+        "a1b2c3",                    // Alphanumeric
+        "schema.table",              // 2-part name (schema.table)
+        "catalog.schema.table",      // 3-part name (catalog.schema.table)
+        "my_catalog.my_schema.my_table", // Full qualified name
+        "catalog1.schema_2.table_3", // With numbers
+    ];
     
     for name in valid_names {
         let config = WrapperConfiguration::new(
@@ -145,18 +156,22 @@ fn test_table_name_ascii_only_valid() {
 
 #[test]
 fn test_table_name_ascii_only_invalid() {
-    // Invalid table names: non-ASCII characters, special chars (except underscore)
+    // Invalid table names: non-ASCII characters, special chars (except underscore and dot as separator)
     let invalid_names = vec![
-        "table-name",      // hyphen
-        "table.name",      // dot
-        "table name",      // space
-        "table@name",      // @ symbol
-        "table#name",      // hash
-        "café",           // non-ASCII
-        "表",              // non-ASCII
+        ("table-name", "hyphen"),                    // hyphen in part
+        ("table name", "space"),                     // space
+        ("table@name", "@ symbol"),                  // @ symbol
+        ("table#name", "hash"),                      // hash
+        ("café", "non-ASCII"),                       // non-ASCII
+        ("表", "non-ASCII"),                         // non-ASCII
+        (".table", "leading dot"),                   // leading dot
+        ("table.", "trailing dot"),                  // trailing dot
+        ("schema..table", "double dot"),             // double dot
+        ("catalog.schema.table.extra", "too many parts"), // 4 parts (max 3)
+        ("", "empty"),                               // empty
     ];
     
-    for name in invalid_names {
+    for (name, reason) in invalid_names {
         let config = WrapperConfiguration::new(
             "https://test.cloud.databricks.com".to_string(),
             name.to_string(),
@@ -164,14 +179,18 @@ fn test_table_name_ascii_only_invalid() {
         let result = config.validate();
         assert!(
             result.is_err(),
-            "Table name '{}' should be invalid",
-            name
+            "Table name '{}' should be invalid (reason: {})",
+            name,
+            reason
         );
         
         if let Err(ZerobusError::ConfigurationError(msg)) = result {
             assert!(
-                msg.contains("ASCII letters, digits, and underscores"),
-                "Error message should mention ASCII requirement: {}",
+                msg.contains("ASCII letters, digits, and underscores") 
+                || msg.contains("cannot be empty")
+                || msg.contains("format 'table'")
+                || msg.contains("too many parts"),
+                "Error message should mention validation requirement: {}",
                 msg
             );
         } else {

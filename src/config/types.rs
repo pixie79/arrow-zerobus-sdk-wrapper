@@ -418,16 +418,64 @@ impl WrapperConfiguration {
             )));
         }
 
-        // Validate table name: ASCII letters, digits, and underscores only (Zerobus requirement)
-        if !self
-            .table_name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
+        // Validate table name: Unity Catalog format (catalog.schema.table, schema.table, or table)
+        // Each part must contain only ASCII letters, digits, and underscores (Zerobus requirement)
+        // Dots are allowed as separators between catalog, schema, and table name parts
+        // Unity Catalog format:
+        //   1 part: table (index 0 = table)
+        //   2 parts: schema.table (index 0 = schema, index 1 = table)
+        //   3 parts: catalog.schema.table (index 0 = catalog, index 1 = schema, index 2 = table)
+        let parts: Vec<&str> = self.table_name.split('.').collect();
+        let num_parts = parts.len();
+
+        if num_parts > 3 {
             return Err(ZerobusError::ConfigurationError(format!(
-                "table_name must contain only ASCII letters, digits, and underscores. Got: '{}'",
-                self.table_name
+                "table_name has too many parts ({}). Must be in format 'table', 'schema.table', or 'catalog.schema.table'. Got: '{}'",
+                num_parts, self.table_name
             )));
+        }
+
+        // Map index to part name based on number of parts and index
+        // 1 part: [0] = table
+        // 2 parts: [0] = schema, [1] = table
+        // 3 parts: [0] = catalog, [1] = schema, [2] = table
+        let get_part_name = |idx: usize, total: usize| -> &'static str {
+            match total {
+                1 => match idx {
+                    0 => "table",
+                    _ => "part",
+                },
+                2 => match idx {
+                    0 => "schema",
+                    1 => "table",
+                    _ => "part",
+                },
+                3 => match idx {
+                    0 => "catalog",
+                    1 => "schema",
+                    2 => "table",
+                    _ => "part",
+                },
+                _ => "part",
+            }
+        };
+
+        for (idx, part) in parts.iter().enumerate() {
+            let part_name = get_part_name(idx, num_parts);
+
+            if part.is_empty() {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "table_name {} part cannot be empty. Got: '{}'",
+                    part_name, self.table_name
+                )));
+            }
+
+            if !part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "table_name {} part '{}' must contain only ASCII letters, digits, and underscores (Zerobus requirement). Got: '{}'",
+                    part_name, part, self.table_name
+                )));
+            }
         }
 
         // Validate debug configuration

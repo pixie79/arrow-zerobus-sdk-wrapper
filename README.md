@@ -399,19 +399,42 @@ if !result.success {
 
 ### Name Validation
 
-- **Table Names**: Must contain only ASCII letters, digits, and underscores
+- **Table Names**: Supports Unity Catalog format:
+  - `table` (simple name)
+  - `schema.table` (2-part name)
+  - `catalog.schema.table` (3-part name)
+  - Each part must contain only ASCII letters, digits, and underscores
+  - Dots (`.`) are allowed as separators between parts
 - **Column Names**: Must contain only ASCII letters, digits, and underscores
 - **Validation**: Names are validated during configuration and schema generation
 - **Error**: Clear error message indicates the invalid name and requirement
 
 ```rust
-// Invalid table name will be rejected
-let config = WrapperConfiguration::new(
+// Valid Unity Catalog table names
+let config1 = WrapperConfiguration::new(
     "https://workspace.cloud.databricks.com".to_string(),
-    "table-name".to_string(),  // ❌ Invalid: contains hyphen
+    "my_table".to_string(),  // ✅ Valid: simple table name
 );
-let result = config.validate();
-// Returns ConfigurationError: "table_name must contain only ASCII letters, digits, and underscores"
+let config2 = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "my_schema.my_table".to_string(),  // ✅ Valid: schema.table format
+);
+let config3 = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "my_catalog.my_schema.my_table".to_string(),  // ✅ Valid: catalog.schema.table format
+);
+
+// Invalid table names will be rejected
+let config4 = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "table-name".to_string(),  // ❌ Invalid: hyphen in part
+);
+let config5 = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "schema..table".to_string(),  // ❌ Invalid: double dot
+);
+let result = config4.validate();
+// Returns ConfigurationError with specific part that failed validation
 ```
 
 ### Type Mapping Compliance
