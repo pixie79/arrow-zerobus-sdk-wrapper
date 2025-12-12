@@ -9,7 +9,8 @@ Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings. Pro
 - **Automatic Retry**: Exponential backoff with jitter for transient failures
 - **Token Refresh**: Automatic authentication token refresh for long-running operations
 - **Observability**: OpenTelemetry metrics and traces integration
-- **Debug Output**: Optional Arrow and Protobuf file output for debugging
+- **Debug Output**: Optional Arrow and Protobuf file output for debugging with independent control per format
+- **File Retention**: Automatic cleanup of old rotated debug files to prevent disk space issues
 - **Writer Disabled Mode**: Disable Zerobus SDK transmission while maintaining debug file output for local development and testing
 - **Per-Row Error Tracking**: Identify which specific rows failed, enabling partial batch success and efficient quarantine workflows
 - **Error Analysis**: Group errors by type, track statistics, and analyze patterns for debugging
@@ -214,7 +215,154 @@ result = await wrapper.send_batch(batch)
 # Debug files written, no network calls made
 ```
 
-**Note**: When `zerobus_writer_disabled` is `true`, `debug_enabled` must also be `true`. Credentials are optional when writer is disabled.
+**Note**: When `zerobus_writer_disabled` is `true`, at least one debug format must be enabled. Credentials are optional when writer is disabled.
+
+## Debug Output Configuration
+
+The wrapper supports flexible debug output configuration with independent control over Arrow and Protobuf file generation, automatic file retention, and improved file rotation.
+
+### Separate Arrow/Protobuf Flags
+
+You can enable Arrow and Protobuf debug output independently:
+
+**Rust:**
+```rust
+use arrow_zerobus_sdk_wrapper::{ZerobusWrapper, WrapperConfiguration};
+use std::path::PathBuf;
+
+// Enable only Arrow debug files
+let config = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "my_table".to_string(),
+)
+.with_debug_arrow_enabled(true)      // Enable Arrow files (.arrows)
+.with_debug_protobuf_enabled(false)  // Disable Protobuf files
+.with_debug_output(PathBuf::from("./debug_output"));
+
+// Enable only Protobuf debug files
+let config = WrapperConfiguration::new(...)
+.with_debug_arrow_enabled(false)
+.with_debug_protobuf_enabled(true)   // Enable Protobuf files (.proto)
+.with_debug_output(PathBuf::from("./debug_output"));
+
+// Enable both formats
+let config = WrapperConfiguration::new(...)
+.with_debug_arrow_enabled(true)
+.with_debug_protobuf_enabled(true)
+.with_debug_output(PathBuf::from("./debug_output"));
+```
+
+**Python:**
+```python
+# Enable only Arrow debug files
+config = PyWrapperConfiguration(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_arrow_enabled=True,      # Enable Arrow files
+    debug_protobuf_enabled=False,  # Disable Protobuf files
+    debug_output_dir="./debug_output"
+)
+
+# Enable only Protobuf debug files
+config = PyWrapperConfiguration(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_arrow_enabled=False,
+    debug_protobuf_enabled=True,   # Enable Protobuf files
+    debug_output_dir="./debug_output"
+)
+```
+
+### File Retention
+
+Control how many rotated debug files are retained to manage disk space:
+
+**Rust:**
+```rust
+// Keep last 20 rotated files per type (default: 10)
+let config = WrapperConfiguration::new(...)
+.with_debug_arrow_enabled(true)
+.with_debug_output(PathBuf::from("./debug_output"))
+.with_debug_max_files_retained(Some(20));
+
+// Unlimited retention (no automatic cleanup)
+let config = WrapperConfiguration::new(...)
+.with_debug_arrow_enabled(true)
+.with_debug_output(PathBuf::from("./debug_output"))
+.with_debug_max_files_retained(None);
+```
+
+**Python:**
+```python
+# Keep last 20 rotated files per type
+config = PyWrapperConfiguration(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_arrow_enabled=True,
+    debug_output_dir="./debug_output",
+    debug_max_files_retained=20  # Default: 10, None = unlimited
+)
+
+# Unlimited retention
+config = PyWrapperConfiguration(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_arrow_enabled=True,
+    debug_output_dir="./debug_output",
+    debug_max_files_retained=None  # No automatic cleanup
+)
+```
+
+### Configuration via YAML
+
+```yaml
+debug:
+  arrow_enabled: true          # Enable Arrow debug files
+  protobuf_enabled: false      # Disable Protobuf debug files
+  output_dir: "/tmp/debug"
+  max_files_retained: 20       # Keep last 20 rotated files (default: 10)
+  flush_interval_secs: 5
+  max_file_size: 10485760
+```
+
+### Configuration via Environment Variables
+
+```bash
+export DEBUG_ARROW_ENABLED=true
+export DEBUG_PROTOBUF_ENABLED=false
+export DEBUG_OUTPUT_DIR=/tmp/debug
+export DEBUG_MAX_FILES_RETAINED=20
+export DEBUG_FLUSH_INTERVAL_SECS=5
+```
+
+### Backward Compatibility
+
+The legacy `debug_enabled` flag still works. When set to `true` and new flags are not explicitly set, both Arrow and Protobuf formats are enabled:
+
+```rust
+// Legacy code - still works, enables both formats
+let config = WrapperConfiguration::new(...)
+.with_debug_output(PathBuf::from("./debug_output"));
+// debug_enabled defaults to true when with_debug_output() is called
+```
+
+```python
+# Legacy Python code - still works
+config = PyWrapperConfiguration(
+    endpoint="https://workspace.cloud.databricks.com",
+    table_name="my_table",
+    debug_enabled=True,  # Enables both Arrow and Protobuf when new flags not set
+    debug_output_dir="./debug_output"
+)
+```
+
+### File Rotation Improvements
+
+File rotation has been improved to prevent recursive timestamp appending and filename length errors:
+
+- **Timestamp Extraction**: Base filename is extracted before appending new timestamp, preventing filenames like `file_20250101_120000_20250101_120001`
+- **Sequential Fallback**: When filenames would exceed filesystem limits, sequential numbering (`_1`, `_2`, etc.) is used instead of timestamps
+- **Automatic Cleanup**: Old rotated files are automatically deleted when retention limit is exceeded
 
 ## Building
 
@@ -469,7 +617,8 @@ Alternatively, if you have the Protobuf schema definition, you can use tools lik
 - **Multi-file Reading**: Supports reading multiple files using glob patterns (`*.arrow`)
 - **Performance**: Arrow IPC format is optimized for fast encoding/decoding and zero-copy data transfer
 - **Protobuf Files**: Require conversion to Arrow IPC format first before reading with DuckDB
-- **File Rotation**: Rotated files (with timestamp suffixes) can be read using glob patterns
+- **File Rotation**: Rotated files (with timestamp suffixes like `table_20251212_143022.arrows`) can be read using glob patterns
+- **File Retention**: Old rotated files are automatically cleaned up based on `debug_max_files_retained` setting (default: 10 files per type)
 - **Flush Before Reading**: Debug files are written incrementally, so you may need to call `wrapper.flush()` before reading
 
 For more details, see the [official DuckDB Arrow IPC support documentation](https://duckdb.org/2025/05/23/arrow-ipc-support-in-duckdb).

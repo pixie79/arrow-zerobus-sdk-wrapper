@@ -2,6 +2,7 @@
 //!
 //! This module handles file rotation based on size limits.
 
+use regex::Regex;
 use std::path::PathBuf;
 use tracing::debug;
 
@@ -34,6 +35,7 @@ pub fn rotate_file_if_needed(
     }
 
     // Generate new file path with timestamp
+    // Extract base filename without existing timestamps to prevent recursive appending
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     let parent = file_path
         .parent()
@@ -44,7 +46,37 @@ pub fn rotate_file_if_needed(
         .unwrap_or("file");
     let extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
-    let new_path = parent.join(format!("{}_{}.{}", stem, timestamp, extension));
+    // Pattern to match timestamp at end of filename: YYYYMMDD_HHMMSS
+    let timestamp_pattern = Regex::new(r"_\d{8}_\d{6}$").unwrap();
+
+    // Extract base filename without timestamp
+    let base_stem = if timestamp_pattern.is_match(stem) {
+        timestamp_pattern.replace(stem, "").to_string()
+    } else {
+        stem.to_string()
+    };
+
+    // Check if resulting filename would exceed filesystem limits (255 chars typical)
+    let new_filename = format!("{}_{}.{}", base_stem, timestamp, extension);
+    let new_path = if new_filename.len() > 250 {
+        // Use sequential numbering instead of timestamp if filename too long
+        let seq_pattern = Regex::new(r"_(\d+)$").unwrap();
+        let next_num = if let Some(captures) = seq_pattern.captures(&base_stem) {
+            captures
+                .get(1)
+                .and_then(|m| m.as_str().parse::<usize>().ok())
+                .map(|n| n + 1)
+                .unwrap_or(1)
+        } else {
+            1
+        };
+
+        // Remove any existing sequential number
+        let clean_base = seq_pattern.replace(&base_stem, "").to_string();
+        parent.join(format!("{}_{}.{}", clean_base, next_num, extension))
+    } else {
+        parent.join(new_filename)
+    };
 
     debug!(
         "Rotating file {} ({} bytes) to {}",

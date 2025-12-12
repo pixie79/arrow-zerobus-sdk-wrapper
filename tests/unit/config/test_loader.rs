@@ -168,3 +168,194 @@ fn test_load_from_env_missing_required() {
     assert!(result.is_err());
 }
 
+#[test]
+fn test_load_from_yaml_separate_arrow_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    let yaml_path = temp_dir.path().join("config.yaml");
+
+    let yaml_content = r#"
+zerobus_endpoint: https://test.cloud.databricks.com
+table_name: test_table
+debug:
+  arrow_enabled: true
+  protobuf_enabled: false
+  output_dir: /tmp/debug
+"#;
+
+    fs::write(&yaml_path, yaml_content).unwrap();
+
+    let config = loader::load_from_yaml(&yaml_path).unwrap();
+
+    assert!(config.debug_arrow_enabled);
+    assert!(!config.debug_protobuf_enabled);
+    assert_eq!(
+        config.debug_output_dir,
+        Some(std::path::PathBuf::from("/tmp/debug"))
+    );
+}
+
+#[test]
+fn test_load_from_yaml_separate_protobuf_flag() {
+    let temp_dir = TempDir::new().unwrap();
+    let yaml_path = temp_dir.path().join("config.yaml");
+
+    let yaml_content = r#"
+zerobus_endpoint: https://test.cloud.databricks.com
+table_name: test_table
+debug:
+  arrow_enabled: false
+  protobuf_enabled: true
+  output_dir: /tmp/debug
+"#;
+
+    fs::write(&yaml_path, yaml_content).unwrap();
+
+    let config = loader::load_from_yaml(&yaml_path).unwrap();
+
+    assert!(!config.debug_arrow_enabled);
+    assert!(config.debug_protobuf_enabled);
+}
+
+#[test]
+fn test_load_from_yaml_backward_compatibility_debug_enabled() {
+    let temp_dir = TempDir::new().unwrap();
+    let yaml_path = temp_dir.path().join("config.yaml");
+
+    let yaml_content = r#"
+zerobus_endpoint: https://test.cloud.databricks.com
+table_name: test_table
+debug:
+  enabled: true
+  output_dir: /tmp/debug
+"#;
+
+    fs::write(&yaml_path, yaml_content).unwrap();
+
+    let config = loader::load_from_yaml(&yaml_path).unwrap();
+
+    // Legacy flag should enable both formats when new flags not set
+    assert!(config.debug_enabled);
+    assert!(config.debug_arrow_enabled);
+    assert!(config.debug_protobuf_enabled);
+}
+
+#[test]
+fn test_load_from_yaml_max_files_retained() {
+    let temp_dir = TempDir::new().unwrap();
+    let yaml_path = temp_dir.path().join("config.yaml");
+
+    let yaml_content = r#"
+zerobus_endpoint: https://test.cloud.databricks.com
+table_name: test_table
+debug:
+  arrow_enabled: true
+  output_dir: /tmp/debug
+  max_files_retained: 5
+"#;
+
+    fs::write(&yaml_path, yaml_content).unwrap();
+
+    let config = loader::load_from_yaml(&yaml_path).unwrap();
+
+    assert_eq!(config.debug_max_files_retained, Some(5));
+}
+
+#[test]
+fn test_load_from_env_separate_arrow_flag() {
+    std::env::set_var("ZEROBUS_ENDPOINT", "https://test.cloud.databricks.com");
+    std::env::set_var("ZEROBUS_TABLE_NAME", "test_table");
+    std::env::set_var("DEBUG_ARROW_ENABLED", "true");
+    std::env::set_var("DEBUG_PROTOBUF_ENABLED", "false");
+    std::env::set_var("DEBUG_OUTPUT_DIR", "/tmp/debug");
+
+    let config = loader::load_from_env().unwrap();
+
+    assert!(config.debug_arrow_enabled);
+    assert!(!config.debug_protobuf_enabled);
+
+    // Cleanup
+    std::env::remove_var("ZEROBUS_ENDPOINT");
+    std::env::remove_var("ZEROBUS_TABLE_NAME");
+    std::env::remove_var("DEBUG_ARROW_ENABLED");
+    std::env::remove_var("DEBUG_PROTOBUF_ENABLED");
+    std::env::remove_var("DEBUG_OUTPUT_DIR");
+}
+
+#[test]
+fn test_load_from_env_separate_protobuf_flag() {
+    std::env::set_var("ZEROBUS_ENDPOINT", "https://test.cloud.databricks.com");
+    std::env::set_var("ZEROBUS_TABLE_NAME", "test_table");
+    std::env::set_var("DEBUG_ARROW_ENABLED", "false");
+    std::env::set_var("DEBUG_PROTOBUF_ENABLED", "true");
+    std::env::set_var("DEBUG_OUTPUT_DIR", "/tmp/debug");
+
+    let config = loader::load_from_env().unwrap();
+
+    assert!(!config.debug_arrow_enabled);
+    assert!(config.debug_protobuf_enabled);
+
+    // Cleanup
+    std::env::remove_var("ZEROBUS_ENDPOINT");
+    std::env::remove_var("ZEROBUS_TABLE_NAME");
+    std::env::remove_var("DEBUG_ARROW_ENABLED");
+    std::env::remove_var("DEBUG_PROTOBUF_ENABLED");
+    std::env::remove_var("DEBUG_OUTPUT_DIR");
+}
+
+#[test]
+fn test_load_from_env_backward_compatibility_debug_enabled() {
+    std::env::set_var("ZEROBUS_ENDPOINT", "https://test.cloud.databricks.com");
+    std::env::set_var("ZEROBUS_TABLE_NAME", "test_table");
+    std::env::set_var("DEBUG_ENABLED", "true");
+    std::env::set_var("DEBUG_OUTPUT_DIR", "/tmp/debug");
+    // Don't set new flags
+
+    let config = loader::load_from_env().unwrap();
+
+    // Legacy flag should enable both formats when new flags not set
+    assert!(config.debug_enabled);
+    assert!(config.debug_arrow_enabled);
+    assert!(config.debug_protobuf_enabled);
+
+    // Cleanup
+    std::env::remove_var("ZEROBUS_ENDPOINT");
+    std::env::remove_var("ZEROBUS_TABLE_NAME");
+    std::env::remove_var("DEBUG_ENABLED");
+    std::env::remove_var("DEBUG_OUTPUT_DIR");
+}
+
+#[test]
+fn test_load_from_env_max_files_retained() {
+    std::env::set_var("ZEROBUS_ENDPOINT", "https://test.cloud.databricks.com");
+    std::env::set_var("ZEROBUS_TABLE_NAME", "test_table");
+    std::env::set_var("DEBUG_ARROW_ENABLED", "true");
+    std::env::set_var("DEBUG_OUTPUT_DIR", "/tmp/debug");
+    std::env::set_var("DEBUG_MAX_FILES_RETAINED", "15");
+
+    let config = loader::load_from_env().unwrap();
+
+    assert_eq!(config.debug_max_files_retained, Some(15));
+
+    // Cleanup
+    std::env::remove_var("ZEROBUS_ENDPOINT");
+    std::env::remove_var("ZEROBUS_TABLE_NAME");
+    std::env::remove_var("DEBUG_ARROW_ENABLED");
+    std::env::remove_var("DEBUG_OUTPUT_DIR");
+    std::env::remove_var("DEBUG_MAX_FILES_RETAINED");
+}
+
+#[test]
+fn test_programmatic_api_separate_flags() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_arrow_enabled(true)
+    .with_debug_protobuf_enabled(false)
+    .with_debug_max_files_retained(Some(20));
+
+    assert!(config.debug_arrow_enabled);
+    assert!(!config.debug_protobuf_enabled);
+    assert_eq!(config.debug_max_files_retained, Some(20));
+}
+

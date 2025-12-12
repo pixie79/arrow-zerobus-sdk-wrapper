@@ -8,12 +8,13 @@ use crate::utils::file_rotation::rotate_file_if_needed;
 use arrow::record_batch::RecordBatch;
 use prost::Message;
 use prost_types::DescriptorProto;
+use regex::Regex;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Batch size for file rotation (matches BATCH_SIZE in mod.rs)
 const ROTATION_BATCH_SIZE: usize = 1000;
@@ -39,6 +40,8 @@ pub struct DebugWriter {
     flush_interval: Duration,
     /// Maximum file size before rotation (optional, secondary to record count)
     max_file_size: Option<u64>,
+    /// Maximum number of rotated files to retain per type (optional, default: Some(10))
+    max_files_retained: Option<usize>,
     /// Timestamp of last flush
     last_flush: Arc<Mutex<Instant>>,
     /// Number of records written to current Arrow file
@@ -56,6 +59,7 @@ impl DebugWriter {
     /// * `table_name` - Table name (used for filename)
     /// * `flush_interval` - Interval for periodic flushing
     /// * `max_file_size` - Maximum file size before rotation (optional, secondary to record count)
+    /// * `max_files_retained` - Maximum number of rotated files to retain per type (optional, default: Some(10))
     ///
     /// # Returns
     ///
@@ -65,6 +69,7 @@ impl DebugWriter {
         table_name: String,
         flush_interval: Duration,
         max_file_size: Option<u64>,
+        max_files_retained: Option<usize>,
     ) -> Result<Self, ZerobusError> {
         // Create output directories
         let arrow_dir = output_dir.join("zerobus/arrow");
@@ -97,6 +102,7 @@ impl DebugWriter {
             protobuf_file_path: Arc::new(tokio::sync::Mutex::new(protobuf_file_path)),
             flush_interval,
             max_file_size,
+            max_files_retained,
             last_flush: Arc::new(Mutex::new(Instant::now())),
             arrow_record_count: Arc::new(Mutex::new(0)),
             protobuf_record_count: Arc::new(Mutex::new(0)),
@@ -104,6 +110,33 @@ impl DebugWriter {
     }
 
     /// Generate rotated file path with timestamp
+    ///
+    /// Extracts the base filename without any existing timestamps before appending a new timestamp.
+    /// This prevents recursive timestamp appending (e.g., `file_20250101_120000_20250101_120001`).
+    ///
+    /// # Behavior
+    ///
+    /// - Detects timestamp pattern `_YYYYMMDD_HHMMSS` at the end of filename (before extension)
+    /// - Removes existing timestamp before appending new one
+    /// - Uses sequential numbering (`_1`, `_2`, etc.) if filename would exceed filesystem limits (250 chars)
+    ///
+    /// # Arguments
+    ///
+    /// * `base_path` - Current file path to rotate
+    ///
+    /// # Returns
+    ///
+    /// New file path with timestamp or sequential number suffix
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// // Input: `table.arrows`
+    /// // Output: `table_20251212_143022.arrows`
+    ///
+    /// // Input: `table_20251212_143022.arrows` (already rotated)
+    /// // Output: `table_20251212_143523.arrows` (timestamp replaced, not appended)
+    /// ```
     fn generate_rotated_path(base_path: &std::path::Path) -> PathBuf {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let parent = base_path
@@ -115,7 +148,41 @@ impl DebugWriter {
             .unwrap_or("file");
         let extension = base_path.extension().and_then(|s| s.to_str()).unwrap_or("");
 
-        parent.join(format!("{}_{}.{}", stem, timestamp, extension))
+        // Pattern to match timestamp at end of filename: YYYYMMDD_HHMMSS
+        // Matches exactly 8 digits, underscore, exactly 6 digits at the end
+        let timestamp_pattern = Regex::new(r"_\d{8}_\d{6}$").unwrap();
+
+        // Extract base filename without timestamp
+        let base_stem = if timestamp_pattern.is_match(stem) {
+            // Remove the timestamp suffix
+            timestamp_pattern.replace(stem, "").to_string()
+        } else {
+            stem.to_string()
+        };
+
+        // Check if resulting filename would exceed filesystem limits (255 chars typical)
+        let new_filename = format!("{}_{}.{}", base_stem, timestamp, extension);
+        if new_filename.len() > 250 {
+            // Use sequential numbering instead of timestamp if filename too long
+            // Extract any existing sequential number
+            let seq_pattern = Regex::new(r"_(\d+)$").unwrap();
+            let next_num = if let Some(captures) = seq_pattern.captures(&base_stem) {
+                captures
+                    .get(1)
+                    .and_then(|m| m.as_str().parse::<usize>().ok())
+                    .map(|n| n + 1)
+                    .unwrap_or(1)
+            } else {
+                1
+            };
+
+            // Remove any existing sequential number
+            let clean_base = seq_pattern.replace(&base_stem, "").to_string();
+            let short_filename = format!("{}_{}.{}", clean_base, next_num, extension);
+            parent.join(short_filename)
+        } else {
+            parent.join(new_filename)
+        }
     }
 
     /// Ensure Arrow writer is initialized
@@ -205,6 +272,22 @@ impl DebugWriter {
                 new_path.display(),
                 current_count
             );
+
+            // Cleanup old files if retention limit is set
+            if let Some(max_files) = self.max_files_retained {
+                if let Err(e) = Self::cleanup_old_files(
+                    old_path.parent().unwrap(),
+                    "arrows",
+                    max_files,
+                    &new_path,
+                )
+                .await
+                {
+                    warn!("Failed to cleanup old Arrow files: {}", e);
+                    // Don't fail rotation if cleanup fails
+                }
+            }
+
             Ok(true)
         } else {
             // Also check file size if configured
@@ -240,6 +323,22 @@ impl DebugWriter {
                         "🔄 Rotated Arrow file due to size limit: {}",
                         new_path.display()
                     );
+
+                    // Cleanup old files if retention limit is set
+                    if let Some(max_files) = self.max_files_retained {
+                        if let Err(e) = Self::cleanup_old_files(
+                            file_path.parent().unwrap(),
+                            "arrows",
+                            max_files,
+                            &new_path,
+                        )
+                        .await
+                        {
+                            warn!("Failed to cleanup old Arrow files: {}", e);
+                            // Don't fail rotation if cleanup fails
+                        }
+                    }
+
                     return Ok(true);
                 }
             }
@@ -289,6 +388,22 @@ impl DebugWriter {
                 new_path.display(),
                 current_count
             );
+
+            // Cleanup old files if retention limit is set
+            if let Some(max_files) = self.max_files_retained {
+                if let Err(e) = Self::cleanup_old_files(
+                    old_path.parent().unwrap(),
+                    "proto",
+                    max_files,
+                    &new_path,
+                )
+                .await
+                {
+                    warn!("Failed to cleanup old Protobuf files: {}", e);
+                    // Don't fail rotation if cleanup fails
+                }
+            }
+
             Ok(true)
         } else {
             // Also check file size if configured
@@ -330,6 +445,22 @@ impl DebugWriter {
                         "🔄 Rotated Protobuf file due to size limit: {}",
                         new_path.display()
                     );
+
+                    // Cleanup old files if retention limit is set
+                    if let Some(max_files) = self.max_files_retained {
+                        if let Err(e) = Self::cleanup_old_files(
+                            file_path.parent().unwrap(),
+                            "proto",
+                            max_files,
+                            &new_path,
+                        )
+                        .await
+                        {
+                            warn!("Failed to cleanup old Protobuf files: {}", e);
+                            // Don't fail rotation if cleanup fails
+                        }
+                    }
+
                     return Ok(true);
                 }
             }
@@ -501,6 +632,182 @@ impl DebugWriter {
         info!("✅ Wrote Protobuf descriptor for table '{}' to: {} (descriptor name: '{}', {} fields, {} nested types)",
               table_name, descriptor_file_path.display(), descriptor_name,
               descriptor.field.len(), descriptor.nested_type.len());
+
+        Ok(())
+    }
+
+    /// Cleanup old rotated files, keeping only the most recent N files
+    ///
+    /// Scans the directory for rotated files matching the base filename pattern,
+    /// sorts them by timestamp (or sequential number, or modification time),
+    /// and deletes files beyond the retention limit, keeping the newest files.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Directory containing rotated files
+    /// * `extension` - File extension (e.g., "arrows" or "proto")
+    /// * `max_files` - Maximum number of files to retain (oldest are deleted first)
+    /// * `active_file` - Path to active file (excluded from cleanup and count)
+    ///
+    /// # Behavior
+    ///
+    /// - Only processes files matching the base filename pattern
+    /// - Excludes the active file from cleanup and retention count
+    /// - Sorts files by timestamp (newest first), then by sequential number, then by modification time
+    /// - Deletes files beyond the limit (oldest first)
+    /// - Logs errors but doesn't fail rotation if cleanup fails
+    ///
+    /// # Returns
+    ///
+    /// Returns error if cleanup fails, but errors are logged and don't block rotation.
+    ///
+    /// # Example
+    ///
+    /// If `max_files=10` and directory contains 15 rotated files:
+    /// - Keeps the 10 newest files
+    /// - Deletes the 5 oldest files
+    /// - Active file is excluded from count
+    async fn cleanup_old_files(
+        dir: &std::path::Path,
+        extension: &str,
+        max_files: usize,
+        active_file: &std::path::Path,
+    ) -> Result<(), ZerobusError> {
+        // Read directory entries
+        let entries = std::fs::read_dir(dir).map_err(|e| {
+            ZerobusError::ConfigurationError(format!(
+                "Failed to read directory {}: {}",
+                dir.display(),
+                e
+            ))
+        })?;
+
+        // Extract base filename from active file (without extension)
+        let active_stem = active_file
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+
+        // Extract base name without timestamp/sequence (for pattern matching)
+        let timestamp_pattern = Regex::new(r"_\d{8}_\d{6}$").unwrap();
+        let seq_pattern = Regex::new(r"_\d+$").unwrap();
+        let base_name = timestamp_pattern.replace(active_stem, "");
+        let base_name = seq_pattern.replace(&base_name, "");
+
+        // Collect matching files with their timestamps/sequence numbers
+        let mut file_entries: Vec<(
+            PathBuf,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<usize>,
+        )> = Vec::new();
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                ZerobusError::ConfigurationError(format!("Failed to read directory entry: {}", e))
+            })?;
+
+            let path = entry.path();
+
+            // Skip if not a file, wrong extension, or is the active file
+            if !path.is_file() {
+                continue;
+            }
+
+            if path.extension().and_then(|s| s.to_str()) != Some(extension) {
+                continue;
+            }
+
+            if path == active_file {
+                continue;
+            }
+
+            // Check if filename matches base pattern
+            let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if !stem.starts_with(base_name.as_ref()) {
+                continue;
+            }
+
+            // Extract timestamp or sequence number
+            let timestamp = if timestamp_pattern.is_match(stem) {
+                // Try to parse timestamp: YYYYMMDD_HHMMSS
+                let timestamp_str = timestamp_pattern.find(stem).unwrap().as_str();
+                let date_part = &timestamp_str[1..9]; // Skip underscore, get YYYYMMDD
+                let time_part = &timestamp_str[10..]; // Get HHMMSS
+
+                if let (Ok(year), Ok(month), Ok(day), Ok(hour), Ok(minute), Ok(second)) = (
+                    date_part[0..4].parse::<i32>(),
+                    date_part[4..6].parse::<u32>(),
+                    date_part[6..8].parse::<u32>(),
+                    time_part[0..2].parse::<u32>(),
+                    time_part[2..4].parse::<u32>(),
+                    time_part[4..6].parse::<u32>(),
+                ) {
+                    chrono::NaiveDate::from_ymd_opt(year, month, day)
+                        .and_then(|date| date.and_hms_opt(hour, minute, second))
+                        .map(|dt| {
+                            chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(
+                                dt,
+                                chrono::Utc,
+                            )
+                        })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Extract sequence number if no timestamp
+            let sequence = if timestamp.is_none() {
+                seq_pattern
+                    .captures(stem)
+                    .and_then(|c| c.get(1))
+                    .and_then(|m| m.as_str().parse::<usize>().ok())
+            } else {
+                None
+            };
+
+            // Get file metadata for fallback sorting
+            let metadata = std::fs::metadata(&path).ok();
+            let modified_time = metadata
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|d| {
+                    chrono::DateTime::<chrono::Utc>::from_timestamp(d.as_secs() as i64, 0)
+                });
+
+            file_entries.push((path, timestamp.or(modified_time), sequence));
+        }
+
+        // Sort by timestamp (newest first), then by sequence (highest first), then by modified time
+        file_entries.sort_by(|a, b| {
+            match (a.1, b.1) {
+                (Some(ta), Some(tb)) => tb.cmp(&ta), // Newest first
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => {
+                    match (a.2, b.2) {
+                        (Some(sa), Some(sb)) => sb.cmp(&sa), // Highest sequence first
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => std::cmp::Ordering::Equal,
+                    }
+                }
+            }
+        });
+
+        // Delete files beyond the limit
+        if file_entries.len() > max_files {
+            let files_to_delete = &file_entries[max_files..];
+            for (file_path, _, _) in files_to_delete {
+                if let Err(e) = std::fs::remove_file(file_path) {
+                    warn!("Failed to delete old file {}: {}", file_path.display(), e);
+                    // Continue with other files even if one fails
+                } else {
+                    info!("🗑️  Deleted old rotated file: {}", file_path.display());
+                }
+            }
+        }
 
         Ok(())
     }

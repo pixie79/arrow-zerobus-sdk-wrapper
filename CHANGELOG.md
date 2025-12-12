@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2025-12-12
+
+### Added
+- **feat**: Separate Arrow and Protobuf debug flags - Independent control via `debug_arrow_enabled` and `debug_protobuf_enabled` configuration flags (resolves #14)
+- **feat**: Automatic file retention - Configurable retention limit (`debug_max_files_retained`, default: 10) with automatic cleanup of oldest rotated files to prevent unlimited disk usage
+- **feat**: File retention configuration - Support for unlimited retention (`None`) or custom limits per file type
+- **tests**: Comprehensive test coverage for separate flags, rotation fixes, and file retention (unit, integration, contract tests)
+
+### Changed
+- **enhancement**: Improved file rotation - Fixed recursive timestamp appending issue where rotated filenames would accumulate multiple timestamps (resolves #13)
+- **enhancement**: Timestamp extraction - File rotation now extracts base filename without existing timestamps before appending new timestamp
+- **enhancement**: Sequential numbering fallback - When filename would exceed filesystem limits, rotation uses sequential numbers instead of timestamps
+- **enhancement**: Backward compatibility - Legacy `debug_enabled` flag still works, automatically enabling both Arrow and Protobuf formats when new flags not set
+
+### Fixed
+- **fix**: Recursive timestamp appending - File rotation no longer creates filenames like `file_20250101_120000_20250101_120001` (resolves #13)
+- **fix**: Filename length errors - Rotation now handles long filenames gracefully by using sequential numbering when timestamp format would exceed limits
+- **fix**: File retention cleanup - Old rotated files are now automatically deleted when retention limit is exceeded, preventing disk space issues
+
+## [0.7.0] - 2025-12-11
+
+### Added
+- **feat**: Separate Arrow and Protobuf debug flags - Independent control via `debug_arrow_enabled` and `debug_protobuf_enabled` configuration flags (resolves #14)
+- **feat**: Automatic file retention - Configurable retention limit (`debug_max_files_retained`, default: 10) with automatic cleanup of oldest rotated files to prevent unlimited disk usage
+- **feat**: File retention configuration - Support for unlimited retention (`None`) or custom limits per file type
+- **tests**: Comprehensive test coverage for separate flags, rotation fixes, and file retention (unit, integration, contract tests)
+
+### Changed
+- **enhancement**: Improved file rotation - Fixed recursive timestamp appending issue where rotated filenames would accumulate multiple timestamps (resolves #13)
+- **enhancement**: Timestamp extraction - File rotation now extracts base filename without existing timestamps before appending new timestamp
+- **enhancement**: Sequential numbering fallback - When filename would exceed filesystem limits, rotation uses sequential numbers instead of timestamps
+- **enhancement**: Backward compatibility - Legacy `debug_enabled` flag still works, automatically enabling both Arrow and Protobuf formats when new flags not set
+
+### Fixed
+- **fix**: Recursive timestamp appending - File rotation no longer creates filenames like `file_20250101_120000_20250101_120001` (resolves #13)
+- **fix**: Filename length errors - Rotation now handles long filenames gracefully by using sequential numbering when timestamp format would exceed limits
+- **fix**: File retention cleanup - Old rotated files are now automatically deleted when retention limit is exceeded, preventing disk space issues
+
 ## [0.7.0] - 2025-12-11
 
 ### Added

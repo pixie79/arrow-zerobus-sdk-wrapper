@@ -334,10 +334,13 @@ impl PyWrapperConfiguration {
     ///     unity_catalog_url: Unity Catalog URL (optional when zerobus_writer_disabled is True)
     ///     observability_enabled: Enable OpenTelemetry observability
     ///     observability_config: OpenTelemetry configuration dict
-    ///     debug_enabled: Enable debug file output (required when zerobus_writer_disabled is True)
-    ///     debug_output_dir: Output directory for debug files (required when debug_enabled is True)
+    ///     debug_enabled: Enable debug file output (legacy, use debug_arrow_enabled and debug_protobuf_enabled instead)
+    ///     debug_arrow_enabled: Enable Arrow debug file output (optional, default: None - uses debug_enabled if not set)
+    ///     debug_protobuf_enabled: Enable Protobuf debug file output (optional, default: None - uses debug_enabled if not set)
+    ///     debug_output_dir: Output directory for debug files (required when any debug format is enabled)
     ///     debug_flush_interval_secs: Debug file flush interval in seconds
     ///     debug_max_file_size: Maximum debug file size before rotation
+    ///     debug_max_files_retained: Maximum number of rotated debug files to retain per type (optional, default: 10, None = unlimited)
     ///     retry_max_attempts: Maximum retry attempts for transient failures
     ///     retry_base_delay_ms: Base delay in milliseconds for exponential backoff
     ///     retry_max_delay_ms: Maximum delay in milliseconds for exponential backoff
@@ -348,7 +351,7 @@ impl PyWrapperConfiguration {
     ///         - ConfigurationError if debug_enabled is True but debug_output_dir is None
     ///         - ConfigurationError if zerobus_writer_disabled is True but debug_enabled is False
     #[new]
-    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000, zerobus_writer_disabled=false))]
+    #[pyo3(signature = (endpoint, table_name, *, client_id=None, client_secret=None, unity_catalog_url=None, observability_enabled=false, observability_config=None, debug_enabled=false, debug_arrow_enabled=None, debug_protobuf_enabled=None, debug_output_dir=None, debug_flush_interval_secs=5, debug_max_file_size=None, debug_max_files_retained=10, retry_max_attempts=5, retry_base_delay_ms=100, retry_max_delay_ms=30000, zerobus_writer_disabled=false))]
     pub fn new(
         endpoint: String,
         table_name: String,
@@ -358,9 +361,12 @@ impl PyWrapperConfiguration {
         observability_enabled: bool,
         observability_config: Option<PyObject>,
         debug_enabled: bool,
+        debug_arrow_enabled: Option<bool>,
+        debug_protobuf_enabled: Option<bool>,
         debug_output_dir: Option<String>,
         debug_flush_interval_secs: u64,
         debug_max_file_size: Option<u64>,
+        debug_max_files_retained: Option<usize>,
         retry_max_attempts: u32,
         retry_base_delay_ms: u64,
         retry_max_delay_ms: u64,
@@ -417,17 +423,40 @@ impl PyWrapperConfiguration {
             config = config.with_observability(otlp_config);
         }
 
+        // Handle new separate flags
+        if let Some(arrow_enabled) = debug_arrow_enabled {
+            config.debug_arrow_enabled = arrow_enabled;
+        }
+        if let Some(protobuf_enabled) = debug_protobuf_enabled {
+            config.debug_protobuf_enabled = protobuf_enabled;
+        }
+
+        // Handle legacy debug_enabled flag (backward compatibility)
         if debug_enabled {
+            // If new flags not explicitly set, enable both formats
+            if debug_arrow_enabled.is_none() && debug_protobuf_enabled.is_none() {
+                config.debug_arrow_enabled = true;
+                config.debug_protobuf_enabled = true;
+            }
+            config.debug_enabled = true;
+        }
+
+        // Set output directory and other settings if any format is enabled
+        let any_debug_enabled =
+            config.debug_arrow_enabled || config.debug_protobuf_enabled || config.debug_enabled;
+
+        if any_debug_enabled {
             if let Some(output_dir) = debug_output_dir {
-                config = config.with_debug_output(PathBuf::from(output_dir));
+                config.debug_output_dir = Some(PathBuf::from(output_dir));
                 config.debug_flush_interval_secs = debug_flush_interval_secs;
                 config.debug_max_file_size = debug_max_file_size;
+                config.debug_max_files_retained = debug_max_files_retained;
             } else {
-                // If debug_enabled is True but debug_output_dir is None, raise an error
-                // This prevents silent failure where debug_enabled is ignored
+                // If any debug format is enabled but debug_output_dir is None, raise an error
+                // This prevents silent failure where debug flags are ignored
                 return Err(PyConfigurationError::new_err(
-                    "debug_output_dir is required when debug_enabled is True. \
-                    Either provide debug_output_dir or set debug_enabled=False."
+                    "debug_output_dir is required when any debug format is enabled. \
+                    Either provide debug_output_dir or disable all debug flags."
                         .to_string(),
                 ));
             }
