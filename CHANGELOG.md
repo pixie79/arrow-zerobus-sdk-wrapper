@@ -13,37 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **feat**: Separate Arrow and Protobuf debug flags - Independent control via `debug_arrow_enabled` and `debug_protobuf_enabled` configuration flags (resolves #14)
 - **feat**: Automatic file retention - Configurable retention limit (`debug_max_files_retained`, default: 10) with automatic cleanup of oldest rotated files to prevent unlimited disk usage
 - **feat**: File retention configuration - Support for unlimited retention (`None`) or custom limits per file type
-- **tests**: Comprehensive test coverage for separate flags, rotation fixes, and file retention (unit, integration, contract tests)
+- **feat**: Zerobus limits compliance - Automatic validation and enforcement of Zerobus service limits:
+  - **Column count limit**: Increased from 1000 to 2000 columns per table (Zerobus limit)
+  - **Record size validation**: 4MB per-message limit validation (4,194,285 bytes payload + 19 bytes headers)
+  - **ASCII-only names**: Validation for table and column names (ASCII letters, digits, underscores only)
+  - **Date type mapping**: Correct Date32 → Int32 mapping (days since epoch) per Zerobus specification
+- **tests**: Comprehensive test coverage for separate flags, rotation fixes, file retention, and Zerobus limits compliance (unit, integration, contract tests)
 
 ### Changed
 - **enhancement**: Improved file rotation - Fixed recursive timestamp appending issue where rotated filenames would accumulate multiple timestamps (resolves #13)
 - **enhancement**: Timestamp extraction - File rotation now extracts base filename without existing timestamps before appending new timestamp
 - **enhancement**: Sequential numbering fallback - When filename would exceed filesystem limits, rotation uses sequential numbers instead of timestamps
 - **enhancement**: Backward compatibility - Legacy `debug_enabled` flag still works, automatically enabling both Arrow and Protobuf formats when new flags not set
+- **enhancement**: Zerobus limits compliance - Updated column count limit from 1000 to 2000 to match Zerobus service limits
+- **enhancement**: Type mapping - Fixed Date32 type mapping to Int32 (days since epoch) instead of Int64, per Zerobus specification
 
 ### Fixed
 - **fix**: Recursive timestamp appending - File rotation no longer creates filenames like `file_20250101_120000_20250101_120001` (resolves #13)
 - **fix**: Filename length errors - Rotation now handles long filenames gracefully by using sequential numbering when timestamp format would exceed limits
 - **fix**: File retention cleanup - Old rotated files are now automatically deleted when retention limit is exceeded, preventing disk space issues
-
-## [0.7.0] - 2025-12-11
-
-### Added
-- **feat**: Separate Arrow and Protobuf debug flags - Independent control via `debug_arrow_enabled` and `debug_protobuf_enabled` configuration flags (resolves #14)
-- **feat**: Automatic file retention - Configurable retention limit (`debug_max_files_retained`, default: 10) with automatic cleanup of oldest rotated files to prevent unlimited disk usage
-- **feat**: File retention configuration - Support for unlimited retention (`None`) or custom limits per file type
-- **tests**: Comprehensive test coverage for separate flags, rotation fixes, and file retention (unit, integration, contract tests)
-
-### Changed
-- **enhancement**: Improved file rotation - Fixed recursive timestamp appending issue where rotated filenames would accumulate multiple timestamps (resolves #13)
-- **enhancement**: Timestamp extraction - File rotation now extracts base filename without existing timestamps before appending new timestamp
-- **enhancement**: Sequential numbering fallback - When filename would exceed filesystem limits, rotation uses sequential numbers instead of timestamps
-- **enhancement**: Backward compatibility - Legacy `debug_enabled` flag still works, automatically enabling both Arrow and Protobuf formats when new flags not set
-
-### Fixed
-- **fix**: Recursive timestamp appending - File rotation no longer creates filenames like `file_20250101_120000_20250101_120001` (resolves #13)
-- **fix**: Filename length errors - Rotation now handles long filenames gracefully by using sequential numbering when timestamp format would exceed limits
-- **fix**: File retention cleanup - Old rotated files are now automatically deleted when retention limit is exceeded, preventing disk space issues
+- **fix**: Date32 type mapping - Date32 now correctly maps to Int32 (days since epoch) instead of Int64, ensuring compatibility with Zerobus Date type requirements
+- **fix**: Record size validation - Records exceeding 4MB are now rejected with clear error messages before transmission, preventing Zerobus API errors
 
 ## [0.7.0] - 2025-12-11
 

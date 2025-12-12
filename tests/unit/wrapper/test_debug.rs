@@ -196,9 +196,10 @@ async fn test_debug_writer_multiple_writes() {
 }
 
 #[tokio::test]
-async fn test_generate_rotated_path_without_timestamp() {
+async fn test_rotation_no_recursive_timestamps() {
+    // Test that file rotation doesn't create recursive timestamps in filenames
+    // This verifies the fix for issue #13 where rotated files would accumulate multiple timestamps
     use arrow_zerobus_sdk_wrapper::wrapper::debug::DebugWriter;
-    use std::path::Path;
     
     let temp_dir = TempDir::new().unwrap();
     let base_path = temp_dir.path().join("test_table.arrows");
@@ -206,8 +207,6 @@ async fn test_generate_rotated_path_without_timestamp() {
     // Create a file to test rotation
     std::fs::File::create(&base_path).unwrap();
     
-    // Use reflection or public method if available
-    // For now, we'll test through actual rotation behavior
     let writer = DebugWriter::new(
         temp_dir.path().to_path_buf(),
         "test_table".to_string(),
@@ -228,20 +227,47 @@ async fn test_generate_rotated_path_without_timestamp() {
         writer.write_arrow(&batch).await.unwrap();
     }
     
-    // Check that rotated file has only one timestamp
+    // Check that rotated files have correct naming format
     let entries: Vec<_> = std::fs::read_dir(temp_dir.path().join("zerobus/arrow"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
         .collect();
     
-    // Verify no recursive timestamps (no double underscores with timestamps)
-    for entry in entries {
-        // Count timestamp patterns - should be at most 1 per filename
-        let timestamp_count = entry.matches("_20").filter(|s| {
-            // Check if it's followed by 6 more digits (YYYYMMDD_HHMMSS pattern)
-            s.len() >= 2 && entry[s.len()..].chars().take(14).all(|c| c.is_ascii_digit() || c == '_')
-        }).count();
-        assert!(timestamp_count <= 1, "Filename should have at most one timestamp: {}", entry);
+    // Verify no recursive timestamps - each filename should have at most one timestamp pattern
+    for entry in &entries {
+        // Extract timestamp patterns: should match YYYYMMDD_HHMMSS format (_20 followed by 8 digits, underscore, 6 digits)
+        // Count occurrences of "_20" followed by date pattern (8 digits) and time pattern (6 digits)
+        let mut timestamp_count = 0;
+        let mut search_start = 0;
+        while let Some(pos) = entry[search_start..].find("_20") {
+            let actual_pos = search_start + pos;
+            // Check if followed by 8 digits, underscore, 6 digits (YYYYMMDD_HHMMSS pattern)
+            if actual_pos + 3 + 8 + 1 + 6 <= entry.len() {
+                let date_part = &entry[actual_pos + 3..actual_pos + 3 + 8];
+                let separator = &entry[actual_pos + 3 + 8..actual_pos + 3 + 8 + 1];
+                let time_part = &entry[actual_pos + 3 + 8 + 1..actual_pos + 3 + 8 + 1 + 6];
+                if date_part.chars().all(|c| c.is_ascii_digit())
+                    && separator == "_"
+                    && time_part.chars().all(|c| c.is_ascii_digit())
+                {
+                    timestamp_count += 1;
+                }
+            }
+            search_start = actual_pos + 3;
+        }
+        assert!(
+            timestamp_count <= 1,
+            "Filename should have at most one timestamp pattern, got {} in: {}",
+            timestamp_count,
+            entry
+        );
+        
+        // Verify filename format: either "test_table.arrows" or "test_table_YYYYMMDD_HHMMSS.arrows"
+        assert!(
+            entry == "test_table.arrows" || (entry.starts_with("test_table_20") && entry.ends_with(".arrows")),
+            "Unexpected filename format: {}",
+            entry
+        );
     }
 }
 
@@ -308,12 +334,8 @@ async fn test_file_retention_cleanup() {
         fs::File::create(&file_path).unwrap();
         // Set file modification time to make them sortable
         let time = std::time::SystemTime::now() - Duration::from_secs((12 - i) as u64);
-        filetime::FileTime::from_system_time(time);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            // Touch file with different mtime
-        }
+        let file_time = filetime::FileTime::from_system_time(time);
+        filetime::set_file_times(&file_path, file_time, file_time).unwrap();
     }
     
     let writer = DebugWriter::new(

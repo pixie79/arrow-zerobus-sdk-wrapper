@@ -606,7 +606,21 @@ impl ZerobusWrapper {
                     }
                 }
             } else {
-                warn!("Debug flags enabled but debug_output_dir is None - debug files will not be written");
+                // Collect which debug flags are enabled for more specific warning
+                let mut enabled_flags = Vec::new();
+                if config.debug_arrow_enabled {
+                    enabled_flags.push("debug_arrow_enabled");
+                }
+                if config.debug_protobuf_enabled {
+                    enabled_flags.push("debug_protobuf_enabled");
+                }
+                if config.debug_enabled {
+                    enabled_flags.push("debug_enabled");
+                }
+                warn!(
+                    "Debug flag(s) enabled ({}) but debug_output_dir is None - debug files will not be written",
+                    enabled_flags.join(", ")
+                );
                 None
             }
         } else {

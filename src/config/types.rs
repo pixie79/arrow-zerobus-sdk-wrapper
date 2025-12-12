@@ -418,6 +418,18 @@ impl WrapperConfiguration {
             )));
         }
 
+        // Validate table name: ASCII letters, digits, and underscores only (Zerobus requirement)
+        if !self
+            .table_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(ZerobusError::ConfigurationError(format!(
+                "table_name must contain only ASCII letters, digits, and underscores. Got: '{}'",
+                self.table_name
+            )));
+        }
+
         // Validate debug configuration
         // Check if any debug format is enabled (new flags or legacy flag)
         let any_debug_enabled =

@@ -14,7 +14,9 @@ Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings. Pro
 - **Writer Disabled Mode**: Disable Zerobus SDK transmission while maintaining debug file output for local development and testing
 - **Per-Row Error Tracking**: Identify which specific rows failed, enabling partial batch success and efficient quarantine workflows
 - **Error Analysis**: Group errors by type, track statistics, and analyze patterns for debugging
+- **Zerobus Limits Compliance**: Automatic validation and enforcement of Zerobus service limits (2000 columns, 4MB records, ASCII-only names, correct type mappings)
 - **Thread-Safe**: Concurrent operations from multiple threads/async tasks
+- **Cross-Platform**: Linux, macOS, Windows support
 - **Cross-Platform**: Linux, macOS, Windows support
 
 ## Requirements
@@ -343,7 +345,7 @@ The legacy `debug_enabled` flag still works. When set to `true` and new flags ar
 // Legacy code - still works, enables both formats
 let config = WrapperConfiguration::new(...)
 .with_debug_output(PathBuf::from("./debug_output"));
-// debug_enabled defaults to true when with_debug_output() is called
+// Note: debug_enabled must be set to true explicitly; with_debug_output() does not enable debugging by itself
 ```
 
 ```python
@@ -363,6 +365,69 @@ File rotation has been improved to prevent recursive timestamp appending and fil
 - **Timestamp Extraction**: Base filename is extracted before appending new timestamp, preventing filenames like `file_20250101_120000_20250101_120001`
 - **Sequential Fallback**: When filenames would exceed filesystem limits, sequential numbering (`_1`, `_2`, etc.) is used instead of timestamps
 - **Automatic Cleanup**: Old rotated files are automatically deleted when retention limit is exceeded
+
+## Zerobus Limits Compliance
+
+The wrapper automatically validates and enforces Zerobus service limits to prevent API errors and ensure compatibility:
+
+### Column Count Limit
+
+- **Maximum**: 2000 columns per table (Zerobus limit)
+- **Validation**: Descriptors with more than 2000 fields are rejected during schema generation
+- **Error**: Clear error message indicates the limit and current field count
+
+### Record Size Limit
+
+- **Maximum**: 4MB per message (4,194,285 bytes payload + 19 bytes headers)
+- **Validation**: Records exceeding the limit are rejected before transmission
+- **Error**: Clear error message indicates the limit and actual record size
+
+```rust
+// Records exceeding 4MB will be rejected with a clear error
+let result = wrapper.send_batch(large_batch).await?;
+if !result.success {
+    // Check for size limit errors in failed_rows
+    for (idx, error) in &result.failed_rows {
+        if let ZerobusError::ConversionError(msg) = error {
+            if msg.contains("exceeds Zerobus limit") {
+                println!("Row {} exceeds 4MB limit", idx);
+            }
+        }
+    }
+}
+```
+
+### Name Validation
+
+- **Table Names**: Must contain only ASCII letters, digits, and underscores
+- **Column Names**: Must contain only ASCII letters, digits, and underscores
+- **Validation**: Names are validated during configuration and schema generation
+- **Error**: Clear error message indicates the invalid name and requirement
+
+```rust
+// Invalid table name will be rejected
+let config = WrapperConfiguration::new(
+    "https://workspace.cloud.databricks.com".to_string(),
+    "table-name".to_string(),  // ❌ Invalid: contains hyphen
+);
+let result = config.validate();
+// Returns ConfigurationError: "table_name must contain only ASCII letters, digits, and underscores"
+```
+
+### Type Mapping Compliance
+
+The wrapper ensures correct type mappings per Zerobus specification:
+
+- **Date32** → `Int32` (days since epoch) ✅
+- **Date64** → `Int64` (milliseconds since epoch)
+- **Timestamp** → `Int64` (microseconds since epoch) ✅
+- **Integer types** → `Int32` or `Int64` as appropriate ✅
+- **String** → `String` ✅
+- **Binary** → `Bytes` ✅
+- **Arrays** → `repeated TYPE` ✅
+- **Structs** → `message Nested { FIELDS }` ✅
+
+All type mappings are validated to ensure compatibility with Zerobus requirements.
 
 ## Building
 
