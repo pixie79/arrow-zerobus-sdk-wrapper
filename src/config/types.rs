@@ -418,16 +418,43 @@ impl WrapperConfiguration {
             )));
         }
 
-        // Validate table name: ASCII letters, digits, and underscores only (Zerobus requirement)
-        if !self
-            .table_name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_')
-        {
+        // Validate table name: Unity Catalog format (catalog.schema.table, schema.table, or table)
+        // Each part must contain only ASCII letters, digits, and underscores (Zerobus requirement)
+        // Dots are allowed as separators between catalog, schema, and table name parts
+        let parts: Vec<&str> = self.table_name.split('.').collect();
+        if parts.is_empty() || parts.len() > 3 {
             return Err(ZerobusError::ConfigurationError(format!(
-                "table_name must contain only ASCII letters, digits, and underscores. Got: '{}'",
+                "table_name must be in format 'table', 'schema.table', or 'catalog.schema.table'. Got: '{}'",
                 self.table_name
             )));
+        }
+
+        for (idx, part) in parts.iter().enumerate() {
+            if part.is_empty() {
+                let part_name = match idx {
+                    0 => "table",
+                    1 => "schema",
+                    2 => "catalog",
+                    _ => "part",
+                };
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "table_name {} part cannot be empty. Got: '{}'",
+                    part_name, self.table_name
+                )));
+            }
+
+            if !part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                let part_name = match idx {
+                    0 => "table",
+                    1 => "schema",
+                    2 => "catalog",
+                    _ => "part",
+                };
+                return Err(ZerobusError::ConfigurationError(format!(
+                    "table_name {} part '{}' must contain only ASCII letters, digits, and underscores (Zerobus requirement). Got: '{}'",
+                    part_name, part, self.table_name
+                )));
+            }
         }
 
         // Validate debug configuration

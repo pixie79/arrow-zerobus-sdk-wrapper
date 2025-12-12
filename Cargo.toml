@@ -1,6 +1,6 @@
 [package]
 name = "arrow-zerobus-sdk-wrapper"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 authors = ["Arrow Zerobus SDK Wrapper Team"]
 description = "Cross-platform Rust SDK wrapper for Databricks Zerobus with Python bindings"
