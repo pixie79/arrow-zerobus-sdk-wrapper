@@ -21,4 +21,5 @@ mod test_per_row_edge_cases;
 mod test_quarantine_helpers;
 mod test_error_analysis;
 mod test_failure_rate_backoff;
+mod test_zerobus_limits;
 

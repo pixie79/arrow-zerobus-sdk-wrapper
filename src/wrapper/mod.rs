@@ -561,31 +561,43 @@ impl ZerobusWrapper {
             info!("Observability enabled");
         }
 
-        // Initialize debug writer if enabled
+        // Initialize debug writer if any format is enabled
+        // Check new flags first, fall back to legacy flag for backward compatibility
+        let any_debug_enabled =
+            config.debug_arrow_enabled || config.debug_protobuf_enabled || config.debug_enabled;
+
         // Info logging to diagnose why debug writer isn't being initialized
         info!(
-            "ZerobusWrapper::new: debug_enabled={}, debug_output_dir={:?}",
-            config.debug_enabled, config.debug_output_dir
+            "ZerobusWrapper::new: debug_arrow_enabled={}, debug_protobuf_enabled={}, debug_enabled={}, debug_output_dir={:?}",
+            config.debug_arrow_enabled, config.debug_protobuf_enabled, config.debug_enabled, config.debug_output_dir
         );
 
-        let debug_writer = if config.debug_enabled {
+        let debug_writer = if any_debug_enabled {
             if let Some(output_dir) = &config.debug_output_dir {
                 use crate::wrapper::debug::DebugWriter;
                 use std::time::Duration;
 
                 info!(
-                    "Initializing debug writer with output_dir: {}, table_name: {}",
+                    "Initializing debug writer with output_dir: {}, table_name: {}, arrow_enabled: {}, protobuf_enabled: {}",
                     output_dir.display(),
-                    config.table_name
+                    config.table_name,
+                    config.debug_arrow_enabled,
+                    config.debug_protobuf_enabled
                 );
                 match DebugWriter::new(
                     output_dir.clone(),
                     config.table_name.clone(),
                     Duration::from_secs(config.debug_flush_interval_secs),
                     config.debug_max_file_size,
+                    config.debug_max_files_retained,
                 ) {
                     Ok(writer) => {
-                        info!("Debug file output enabled: {}", output_dir.display());
+                        info!(
+                            "Debug file output enabled: {} (Arrow: {}, Protobuf: {})",
+                            output_dir.display(),
+                            config.debug_arrow_enabled,
+                            config.debug_protobuf_enabled
+                        );
                         Some(Arc::new(writer))
                     }
                     Err(e) => {
@@ -594,11 +606,25 @@ impl ZerobusWrapper {
                     }
                 }
             } else {
-                warn!("debug_enabled is true but debug_output_dir is None - debug files will not be written");
+                // Collect which debug flags are enabled for more specific warning
+                let mut enabled_flags = Vec::new();
+                if config.debug_arrow_enabled {
+                    enabled_flags.push("debug_arrow_enabled");
+                }
+                if config.debug_protobuf_enabled {
+                    enabled_flags.push("debug_protobuf_enabled");
+                }
+                if config.debug_enabled {
+                    enabled_flags.push("debug_enabled");
+                }
+                warn!(
+                    "Debug flag(s) enabled ({}) but debug_output_dir is None - debug files will not be written",
+                    enabled_flags.join(", ")
+                );
                 None
             }
         } else {
-            info!("debug_enabled is false - debug files will not be written");
+            info!("All debug flags are false - debug files will not be written");
             None
         };
 
@@ -667,11 +693,13 @@ impl ZerobusWrapper {
             batch_size_bytes
         );
 
-        // Write Arrow batch to debug file if enabled
-        if let Some(ref debug_writer) = self.debug_writer {
-            if let Err(e) = debug_writer.write_arrow(&batch).await {
-                warn!("Failed to write Arrow debug file: {}", e);
-                // Don't fail the operation if debug writing fails
+        // Write Arrow batch to debug file if Arrow debug is enabled
+        if self.config.debug_arrow_enabled {
+            if let Some(ref debug_writer) = self.debug_writer {
+                if let Err(e) = debug_writer.write_arrow(&batch).await {
+                    warn!("Failed to write Arrow debug file: {}", e);
+                    // Don't fail the operation if debug writing fails
+                }
             }
         }
 
@@ -859,18 +887,20 @@ impl ZerobusWrapper {
             generated
         };
 
-        // Write descriptor to file once per table (if debug writer is enabled)
-        if let Some(ref debug_writer) = self.debug_writer {
-            let mut written_guard = self.descriptor_written.lock().await;
-            if !*written_guard {
-                if let Err(e) = debug_writer
-                    .write_descriptor(&self.config.table_name, &descriptor)
-                    .await
-                {
-                    warn!("Failed to write Protobuf descriptor to debug file: {}", e);
-                    // Don't fail the operation if descriptor writing fails
-                } else {
-                    *written_guard = true;
+        // Write descriptor to file once per table (if either Arrow or Protobuf debug is enabled)
+        if self.config.debug_arrow_enabled || self.config.debug_protobuf_enabled {
+            if let Some(ref debug_writer) = self.debug_writer {
+                let mut written_guard = self.descriptor_written.lock().await;
+                if !*written_guard {
+                    if let Err(e) = debug_writer
+                        .write_descriptor(&self.config.table_name, &descriptor)
+                        .await
+                    {
+                        warn!("Failed to write Protobuf descriptor to debug file: {}", e);
+                        // Don't fail the operation if descriptor writing fails
+                    } else {
+                        *written_guard = true;
+                    }
                 }
             }
         }
@@ -883,30 +913,32 @@ impl ZerobusWrapper {
         // Track conversion errors (will be merged with transmission errors later)
         let conversion_errors = conversion_result.failed_rows;
 
-        // Write Protobuf bytes to debug file if enabled (only successful conversions)
+        // Write Protobuf bytes to debug file if Protobuf debug is enabled (only successful conversions)
         // Flush after each batch to ensure files are immediately available for debugging
         // CRITICAL: Write protobuf files BEFORE Zerobus write attempts, so we have them even if Zerobus fails
-        if let Some(ref debug_writer) = self.debug_writer {
-            info!(
-                "Writing {} protobuf messages to debug file",
-                conversion_result.successful_bytes.len()
-            );
-            let num_rows = conversion_result.successful_bytes.len();
-            for (idx, (_, bytes)) in conversion_result.successful_bytes.iter().enumerate() {
-                // Flush immediately after last row in batch
-                let flush_immediately = idx == num_rows - 1;
-                if let Err(e) = debug_writer.write_protobuf(bytes, flush_immediately).await {
-                    warn!("Failed to write Protobuf debug file: {}", e);
-                    // Don't fail the operation if debug writing fails
-                } else if flush_immediately {
-                    info!(
-                        "✅ Flushed protobuf debug file after batch ({} messages)",
-                        num_rows
-                    );
+        if self.config.debug_protobuf_enabled {
+            if let Some(ref debug_writer) = self.debug_writer {
+                info!(
+                    "Writing {} protobuf messages to debug file",
+                    conversion_result.successful_bytes.len()
+                );
+                let num_rows = conversion_result.successful_bytes.len();
+                for (idx, (_, bytes)) in conversion_result.successful_bytes.iter().enumerate() {
+                    // Flush immediately after last row in batch
+                    let flush_immediately = idx == num_rows - 1;
+                    if let Err(e) = debug_writer.write_protobuf(bytes, flush_immediately).await {
+                        warn!("Failed to write Protobuf debug file: {}", e);
+                        // Don't fail the operation if debug writing fails
+                    } else if flush_immediately {
+                        info!(
+                            "✅ Flushed protobuf debug file after batch ({} messages)",
+                            num_rows
+                        );
+                    }
                 }
+            } else {
+                warn!("⚠️  Debug writer is None - protobuf debug files will not be written. Check debug_protobuf_enabled and debug_output_dir config.");
             }
-        } else {
-            warn!("⚠️  Debug writer is None - protobuf debug files will not be written. Check debug_enabled and debug_output_dir config.");
         }
 
         // Check if writer is disabled - if so, skip all SDK calls and return success

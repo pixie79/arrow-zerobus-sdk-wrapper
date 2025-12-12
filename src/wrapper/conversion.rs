@@ -19,11 +19,16 @@ use tracing::debug;
 const MAX_NESTING_DEPTH: usize = 10;
 
 /// Maximum number of fields per message (prevents memory exhaustion)
-const MAX_FIELDS_PER_MESSAGE: usize = 1000;
+/// Zerobus limit: 2000 columns per table
+const MAX_FIELDS_PER_MESSAGE: usize = 2000;
 
 /// Valid Protobuf field number range (1 to 536870911)
 const MIN_FIELD_NUMBER: i32 = 1;
 const MAX_FIELD_NUMBER: i32 = 536870911;
+
+/// Maximum record size in bytes (Zerobus limit: 4MB per message)
+/// Headers take 19 bytes, so payload limit is 4,194,285 bytes
+const MAX_RECORD_SIZE_BYTES: usize = 4_194_285;
 
 /// Validate a Protobuf descriptor to prevent security issues
 ///
@@ -195,8 +200,21 @@ pub fn record_batch_to_protobuf_bytes(
                 failed_rows.push((row_idx, error));
             }
         } else {
-            // Add to successful conversions
-            successful_bytes.push((row_idx, row_buffer));
+            // Validate record size (Zerobus limit: 4MB per message)
+            if row_buffer.len() > MAX_RECORD_SIZE_BYTES {
+                failed_rows.push((
+                    row_idx,
+                    ZerobusError::ConversionError(format!(
+                        "Record size ({}) exceeds Zerobus limit of {} bytes (4MB). Headers require 19 bytes, leaving {} bytes for payload.",
+                        row_buffer.len(),
+                        MAX_RECORD_SIZE_BYTES + 19,
+                        MAX_RECORD_SIZE_BYTES
+                    )),
+                ));
+            } else {
+                // Add to successful conversions
+                successful_bytes.push((row_idx, row_buffer));
+            }
         }
     }
 
@@ -751,8 +769,16 @@ fn encode_arrow_value_to_protobuf(
         }
         3 => {
             // Int64
-            // Handle both Int64Array and TimestampArray (which stores time as Int64 internally)
+            // Handle Int64Array, Date64Array, and TimestampArray (which stores time as Int64 internally)
             if let Some(arr) = array.as_any().downcast_ref::<Int64Array>() {
+                let wire_type = 0u32; // Varint
+                encode_tag(buffer, field_number, wire_type)?;
+                encode_varint(buffer, arr.value(row_idx) as u64)?;
+                Ok(())
+            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::Date64Array>() {
+                // Date64Array stores milliseconds since epoch as i64
+                // Note: Zerobus Date type expects Int32 (days), but Date64 stores milliseconds
+                // We encode as Int64 here; if Date type is needed, convert milliseconds to days
                 let wire_type = 0u32; // Varint
                 encode_tag(buffer, field_number, wire_type)?;
                 encode_varint(buffer, arr.value(row_idx) as u64)?;
@@ -813,14 +839,24 @@ fn encode_arrow_value_to_protobuf(
         }
         5 => {
             // Int32
-            let arr = array
-                .as_any()
-                .downcast_ref::<Int32Array>()
-                .ok_or_else(|| ZerobusError::ConversionError("Expected Int32Array".to_string()))?;
-            let wire_type = 0u32; // Varint
-            encode_tag(buffer, field_number, wire_type)?;
-            encode_varint(buffer, arr.value(row_idx) as u64)?;
-            Ok(())
+            // Handle Int32Array and Date32Array (Date32 stores days since epoch as i32)
+            if let Some(arr) = array.as_any().downcast_ref::<Int32Array>() {
+                let wire_type = 0u32; // Varint
+                encode_tag(buffer, field_number, wire_type)?;
+                encode_varint(buffer, arr.value(row_idx) as u64)?;
+                Ok(())
+            } else if let Some(arr) = array.as_any().downcast_ref::<arrow::array::Date32Array>() {
+                // Date32Array stores days since epoch as i32
+                let wire_type = 0u32; // Varint
+                encode_tag(buffer, field_number, wire_type)?;
+                encode_varint(buffer, arr.value(row_idx) as u64)?;
+                Ok(())
+            } else {
+                Err(ZerobusError::ConversionError(format!(
+                    "Expected Int32Array or Date32Array for Int32 field, got: {:?}",
+                    array.data_type()
+                )))
+            }
         }
         8 => {
             // Bool
@@ -972,6 +1008,18 @@ fn generate_protobuf_descriptor_internal(
     let mut field_number = 1;
 
     for field in schema.fields().iter() {
+        // Validate column name: ASCII letters, digits, and underscores only (Zerobus requirement)
+        let field_name = field.name();
+        if !field_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(ZerobusError::ConfigurationError(format!(
+                "Column name '{}' must contain only ASCII letters, digits, and underscores (Zerobus requirement)",
+                field_name
+            )));
+        }
+
         // Determine if this is a repeated field (List or LargeList)
         let is_repeated = matches!(
             field.data_type(),
@@ -1084,8 +1132,9 @@ fn arrow_type_to_protobuf_type(
         DataType::Boolean => Ok(Type::Bool),
         DataType::Utf8 | DataType::LargeUtf8 => Ok(Type::String),
         DataType::Binary | DataType::LargeBinary => Ok(Type::Bytes),
-        DataType::Timestamp(_, _) => Ok(Type::Int64), // Store as Int64 (nanoseconds)
-        DataType::Date32 | DataType::Date64 => Ok(Type::Int64), // Store as Int64
+        DataType::Timestamp(_, _) => Ok(Type::Int64), // Store as Int64 (microseconds)
+        DataType::Date32 => Ok(Type::Int32),          // Date32 stores days since epoch as Int32
+        DataType::Date64 => Ok(Type::Int64), // Date64 stores milliseconds since epoch as Int64
         DataType::List(inner_type) | DataType::LargeList(inner_type) => {
             // For lists, we need to extract the inner type and convert it
             // Lists in Protobuf are represented as repeated fields

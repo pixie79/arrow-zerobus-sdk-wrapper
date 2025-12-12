@@ -99,13 +99,24 @@ pub struct WrapperConfiguration {
     /// OpenTelemetry configuration (optional)
     pub observability_config: Option<OtlpSdkConfig>,
     /// Enable/disable debug file output (default: false)
+    /// @deprecated Use debug_arrow_enabled and debug_protobuf_enabled instead
     pub debug_enabled: bool,
+    /// Enable/disable Arrow debug file output (default: false)
+    /// When true, Arrow debug files (.arrows) are written to debug_output_dir
+    pub debug_arrow_enabled: bool,
+    /// Enable/disable Protobuf debug file output (default: false)
+    /// When true, Protobuf debug files (.proto) are written to debug_output_dir
+    pub debug_protobuf_enabled: bool,
     /// Output directory for debug files (required if debug_enabled)
     pub debug_output_dir: Option<PathBuf>,
     /// Debug file flush interval in seconds (default: 5)
     pub debug_flush_interval_secs: u64,
     /// Maximum debug file size in bytes before rotation (optional)
     pub debug_max_file_size: Option<u64>,
+    /// Maximum number of rotated debug files to retain per type (default: Some(10))
+    /// When Some(n), keeps last n rotated files, automatically deleting oldest when limit exceeded
+    /// When None, unlimited retention (no automatic cleanup)
+    pub debug_max_files_retained: Option<usize>,
     /// Maximum retry attempts for transient failures (default: 5)
     pub retry_max_attempts: u32,
     /// Base delay in milliseconds for exponential backoff (default: 100)
@@ -157,9 +168,12 @@ impl WrapperConfiguration {
             observability_enabled: false,
             observability_config: None,
             debug_enabled: false,
+            debug_arrow_enabled: false,
+            debug_protobuf_enabled: false,
             debug_output_dir: None,
             debug_flush_interval_secs: 5,
             debug_max_file_size: None,
+            debug_max_files_retained: Some(10),
             retry_max_attempts: 5,
             retry_base_delay_ms: 100,
             retry_max_delay_ms: 30000,
@@ -230,6 +244,103 @@ impl WrapperConfiguration {
     /// * `max_size` - Maximum file size in bytes before rotation
     pub fn with_debug_max_file_size(mut self, max_size: Option<u64>) -> Self {
         self.debug_max_file_size = max_size;
+        self
+    }
+
+    /// Set Arrow debug output enabled
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - If `true`, Arrow debug files (.arrows) will be written to `debug_output_dir`
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = WrapperConfiguration::new(
+    ///     "https://workspace.cloud.databricks.com".to_string(),
+    ///     "my_table".to_string(),
+    /// )
+    /// .with_debug_arrow_enabled(true)
+    /// .with_debug_output(PathBuf::from("./debug_output"));
+    /// ```
+    pub fn with_debug_arrow_enabled(mut self, enabled: bool) -> Self {
+        self.debug_arrow_enabled = enabled;
+        self
+    }
+
+    /// Set Protobuf debug output enabled
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - If `true`, Protobuf debug files (.proto) will be written to `debug_output_dir`
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
+    /// use std::path::PathBuf;
+    ///
+    /// let config = WrapperConfiguration::new(
+    ///     "https://workspace.cloud.databricks.com".to_string(),
+    ///     "my_table".to_string(),
+    /// )
+    /// .with_debug_protobuf_enabled(true)
+    /// .with_debug_output(PathBuf::from("./debug_output"));
+    /// ```
+    pub fn with_debug_protobuf_enabled(mut self, enabled: bool) -> Self {
+        self.debug_protobuf_enabled = enabled;
+        self
+    }
+
+    /// Set debug file retention limit
+    ///
+    /// # Arguments
+    ///
+    /// * `max_files` - Maximum number of rotated files to retain per type (default: Some(10), None = unlimited)
+    ///   When Some(n), keeps last n rotated files, automatically deleting oldest when limit exceeded.
+    ///   When None, unlimited retention (no automatic cleanup).
+    ///
+    /// # Returns
+    ///
+    /// Self for method chaining
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use arrow_zerobus_sdk_wrapper::WrapperConfiguration;
+    /// use std::path::PathBuf;
+    ///
+    /// // Keep last 20 rotated files per type
+    /// let config = WrapperConfiguration::new(
+    ///     "https://workspace.cloud.databricks.com".to_string(),
+    ///     "my_table".to_string(),
+    /// )
+    /// .with_debug_arrow_enabled(true)
+    /// .with_debug_output(PathBuf::from("./debug_output"))
+    /// .with_debug_max_files_retained(Some(20));
+    ///
+    /// // Unlimited retention (no automatic cleanup)
+    /// let config_unlimited = WrapperConfiguration::new(
+    ///     "https://workspace.cloud.databricks.com".to_string(),
+    ///     "my_table".to_string(),
+    /// )
+    /// .with_debug_arrow_enabled(true)
+    /// .with_debug_output(PathBuf::from("./debug_output"))
+    /// .with_debug_max_files_retained(None);
+    /// ```
+    pub fn with_debug_max_files_retained(mut self, max_files: Option<usize>) -> Self {
+        self.debug_max_files_retained = max_files;
         self
     }
 
@@ -307,17 +418,33 @@ impl WrapperConfiguration {
             )));
         }
 
+        // Validate table name: ASCII letters, digits, and underscores only (Zerobus requirement)
+        if !self
+            .table_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        {
+            return Err(ZerobusError::ConfigurationError(format!(
+                "table_name must contain only ASCII letters, digits, and underscores. Got: '{}'",
+                self.table_name
+            )));
+        }
+
         // Validate debug configuration
-        if self.debug_enabled && self.debug_output_dir.is_none() {
+        // Check if any debug format is enabled (new flags or legacy flag)
+        let any_debug_enabled =
+            self.debug_arrow_enabled || self.debug_protobuf_enabled || self.debug_enabled;
+
+        if any_debug_enabled && self.debug_output_dir.is_none() {
             return Err(ZerobusError::ConfigurationError(
-                "debug_output_dir is required when debug_enabled is true".to_string(),
+                "debug_output_dir is required when any debug format is enabled".to_string(),
             ));
         }
 
-        // Validate writer disabled mode requires debug enabled
-        if self.zerobus_writer_disabled && !self.debug_enabled {
+        // Validate writer disabled mode requires at least one debug format enabled
+        if self.zerobus_writer_disabled && !any_debug_enabled {
             return Err(ZerobusError::ConfigurationError(
-                "debug_enabled must be true when zerobus_writer_disabled is true. Use with_debug_output() to enable debug output.".to_string(),
+                "At least one debug format must be enabled when zerobus_writer_disabled is true. Use with_debug_arrow_enabled() or with_debug_protobuf_enabled() to enable debug output.".to_string(),
             ));
         }
 

@@ -1,12 +1,12 @@
 <!--
 Sync Impact Report:
-Version change: 1.0.0 → 1.1.0
-Modified principles: N/A
-Added sections: Commit Workflow Standards (new principle)
+Version change: 1.1.0 → 1.2.0
+Modified principles: Documentation Requirements (added date accuracy requirement)
+Added sections: N/A
 Templates requiring updates:
-  ✅ plan-template.md - No changes required (commit workflow applies to all features)
-  ✅ tasks-template.md - No changes required (commit workflow is cross-cutting)
-  ✅ spec-template.md - No changes required (commit workflow applies to all features)
+  ✅ plan-template.md - No changes required (date requirement applies to all templates)
+  ✅ tasks-template.md - No changes required (date requirement applies to all templates)
+  ✅ spec-template.md - No changes required (date requirement applies to all templates)
 Follow-up TODOs: None
 -->
 
@@ -129,6 +129,7 @@ and traceability of changes.
 - Examples MUST be provided for common use cases
 - Performance characteristics MUST be documented
 - Migration guides for breaking changes
+- Specification documents (spec.md, plan.md, research.md, etc.) MUST use the actual current date obtained via the `date` command (e.g., `date +%Y-%m-%d`) rather than hardcoded or assumed dates. This ensures accurate timestamps for all feature documentation.
 
 ## Governance
 
@@ -144,4 +145,4 @@ Exceptions to principles require explicit approval and documentation.
 - Manual review: code quality, API design, documentation
 - Both automated and manual checks must pass before merge
 
-**Version**: 1.1.0 | **Ratified**: 2025-11-23 | **Last Amended**: 2025-11-25
+**Version**: 1.2.0 | **Ratified**: 2025-11-23 | **Last Amended**: 2025-12-12

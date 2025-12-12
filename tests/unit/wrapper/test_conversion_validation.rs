@@ -105,12 +105,12 @@ fn test_validate_descriptor_max_nesting_depth() {
 
 #[test]
 fn test_validate_descriptor_max_fields() {
-    // Create descriptor with 1001 fields (exceeds max of 1000)
+    // Create descriptor with 2001 fields (exceeds max of 2000 - Zerobus limit)
     let mut descriptor = create_valid_descriptor();
     
-    // Add 1001 fields
+    // Add 2001 fields
     descriptor.field.clear();
-    for i in 1..=1001 {
+    for i in 1..=2001 {
         descriptor.field.push(FieldDescriptorProto {
             name: Some(format!("field_{}", i)),
             number: Some(i),
@@ -129,7 +129,7 @@ fn test_validate_descriptor_max_fields() {
     let result = conversion::validate_protobuf_descriptor(&descriptor);
     assert!(
         result.is_err(),
-        "Descriptor with 1001 fields should be rejected"
+        "Descriptor with 2001 fields should be rejected"
     );
     
     if let Err(ZerobusError::ConfigurationError(msg)) = result {
@@ -138,9 +138,44 @@ fn test_validate_descriptor_max_fields() {
             "Error message should mention field count: {}",
             msg
         );
+        assert!(
+            msg.contains("2000"),
+            "Error message should mention the limit of 2000: {}",
+            msg
+        );
     } else {
         panic!("Expected ConfigurationError, got: {:?}", result);
     }
+}
+
+#[test]
+fn test_validate_descriptor_max_fields_at_limit() {
+    // Create descriptor with exactly 2000 fields (at Zerobus limit)
+    let mut descriptor = create_valid_descriptor();
+    
+    // Add 2000 fields
+    descriptor.field.clear();
+    for i in 1..=2000 {
+        descriptor.field.push(FieldDescriptorProto {
+            name: Some(format!("field_{}", i)),
+            number: Some(i),
+            label: Some(Label::Optional as i32),
+            r#type: Some(Type::Int32 as i32),
+            type_name: None,
+            extendee: None,
+            default_value: None,
+            oneof_index: None,
+            json_name: None,
+            options: None,
+            proto3_optional: None,
+        });
+    }
+    
+    let result = conversion::validate_protobuf_descriptor(&descriptor);
+    assert!(
+        result.is_ok(),
+        "Descriptor with exactly 2000 fields should be accepted"
+    );
 }
 
 #[test]

@@ -50,6 +50,61 @@ fn test_config_contract_builder_methods() {
     );
 }
 
+/// Test that separate Arrow and Protobuf debug flags work as specified
+#[test]
+fn test_config_contract_separate_debug_flags() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_arrow_enabled(true)
+    .with_debug_protobuf_enabled(false)
+    .with_debug_max_files_retained(Some(15));
+
+    // Contract: Separate flags should be independently settable
+    assert!(config.debug_arrow_enabled);
+    assert!(!config.debug_protobuf_enabled);
+    assert_eq!(config.debug_max_files_retained, Some(15));
+}
+
+/// Test that backward compatibility with legacy debug_enabled flag works
+#[test]
+fn test_config_contract_backward_compatibility() {
+    // Test programmatic API backward compatibility
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_output(std::path::PathBuf::from("/tmp/debug"));
+    
+    // When using legacy with_debug_output(), both formats should be enabled
+    // (This is handled by the loader, but we verify the struct fields)
+    // Note: with_debug_output() sets debug_enabled=true, which triggers backward compat logic
+    assert!(config.debug_enabled);
+}
+
+/// Test that file retention configuration works as specified
+#[test]
+fn test_config_contract_file_retention() {
+    let config = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_max_files_retained(Some(20));
+
+    // Contract: max_files_retained should be configurable
+    assert_eq!(config.debug_max_files_retained, Some(20));
+    
+    // Contract: None should mean unlimited retention
+    let config_unlimited = WrapperConfiguration::new(
+        "https://test.cloud.databricks.com".to_string(),
+        "test_table".to_string(),
+    )
+    .with_debug_max_files_retained(None);
+    
+    assert_eq!(config_unlimited.debug_max_files_retained, None);
+}
+
 /// Test that ZerobusWrapper::new requires valid configuration
 #[tokio::test]
 async fn test_wrapper_new_contract() {

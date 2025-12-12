@@ -30,7 +30,7 @@ fn test_date32_conversion() {
             name: Some("date".to_string()),
             number: Some(1),
             label: Some(Label::Optional as i32),
-            r#type: Some(Type::Int32 as i32), // Date32 maps to Int32
+            r#type: Some(Type::Int32 as i32), // Date32 maps to Int32 (Zerobus requirement)
             type_name: None,
             extendee: None,
             default_value: None,
@@ -57,6 +57,17 @@ fn test_date32_conversion() {
     bytes_list.sort_by_key(|(idx, _)| *idx);
     let bytes_list: Vec<Vec<u8>> = bytes_list.into_iter().map(|(_, bytes)| bytes).collect();
     assert!(!bytes_list[0].is_empty());
+}
+
+#[test]
+fn test_date32_descriptor_generation() {
+    // Verify that Date32 generates Int32 descriptor (Zerobus requirement: Date → Int32)
+    let schema = Schema::new(vec![Field::new("date", DataType::Date32, false)]);
+    let descriptor = conversion::generate_protobuf_descriptor(&schema).unwrap();
+    
+    assert_eq!(descriptor.field.len(), 1);
+    assert_eq!(descriptor.field[0].name, Some("date".to_string()));
+    assert_eq!(descriptor.field[0].r#type, Some(Type::Int32 as i32));
 }
 
 #[test]

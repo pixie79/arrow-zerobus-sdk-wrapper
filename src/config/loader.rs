@@ -31,10 +31,13 @@ pub struct ObservabilityYaml {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DebugYaml {
-    pub enabled: Option<bool>,
+    pub enabled: Option<bool>,          // Legacy flag
+    pub arrow_enabled: Option<bool>,    // New flag
+    pub protobuf_enabled: Option<bool>, // New flag
     pub output_dir: Option<String>,
     pub flush_interval_secs: Option<u64>,
     pub max_file_size: Option<u64>,
+    pub max_files_retained: Option<usize>, // New flag
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -100,13 +103,34 @@ pub fn load_from_yaml<P: AsRef<Path>>(path: P) -> Result<WrapperConfiguration, Z
     }
 
     if let Some(debug) = yaml.debug {
+        // Handle new separate flags
+        if let Some(arrow_enabled) = debug.arrow_enabled {
+            config.debug_arrow_enabled = arrow_enabled;
+        }
+        if let Some(protobuf_enabled) = debug.protobuf_enabled {
+            config.debug_protobuf_enabled = protobuf_enabled;
+        }
+
+        // Handle legacy debug.enabled flag (backward compatibility)
         if debug.enabled.unwrap_or(false) {
-            if let Some(output_dir) = debug.output_dir {
-                config = config.with_debug_output(std::path::PathBuf::from(output_dir));
-                if let Some(interval) = debug.flush_interval_secs {
-                    config.debug_flush_interval_secs = interval;
-                }
-                config.debug_max_file_size = debug.max_file_size;
+            // If new flags not explicitly set, enable both formats
+            if debug.arrow_enabled.is_none() && debug.protobuf_enabled.is_none() {
+                config.debug_arrow_enabled = true;
+                config.debug_protobuf_enabled = true;
+            }
+            // Also set legacy flag for compatibility
+            config.debug_enabled = true;
+        }
+
+        // Set output directory if any format is enabled
+        if let Some(output_dir) = debug.output_dir {
+            config.debug_output_dir = Some(std::path::PathBuf::from(output_dir));
+            if let Some(interval) = debug.flush_interval_secs {
+                config.debug_flush_interval_secs = interval;
+            }
+            config.debug_max_file_size = debug.max_file_size;
+            if let Some(max_files) = debug.max_files_retained {
+                config.debug_max_files_retained = Some(max_files);
             }
         }
     }
@@ -176,14 +200,40 @@ pub fn load_from_env() -> Result<WrapperConfiguration, ZerobusError> {
         config = config.with_observability(otlp_config);
     }
 
+    // Handle new separate flags from environment variables
+    if std::env::var("DEBUG_ARROW_ENABLED").unwrap_or_default() == "true" {
+        config.debug_arrow_enabled = true;
+    }
+    if std::env::var("DEBUG_PROTOBUF_ENABLED").unwrap_or_default() == "true" {
+        config.debug_protobuf_enabled = true;
+    }
+
+    // Handle legacy DEBUG_ENABLED flag (backward compatibility)
     if std::env::var("DEBUG_ENABLED").unwrap_or_default() == "true" {
+        // If new flags not explicitly set, enable both formats
+        if std::env::var("DEBUG_ARROW_ENABLED").is_err()
+            && std::env::var("DEBUG_PROTOBUF_ENABLED").is_err()
+        {
+            config.debug_arrow_enabled = true;
+            config.debug_protobuf_enabled = true;
+        }
+        config.debug_enabled = true;
+    }
+
+    // Set output directory and other settings if any format is enabled
+    if config.debug_arrow_enabled || config.debug_protobuf_enabled || config.debug_enabled {
         if let Ok(output_dir) = std::env::var("DEBUG_OUTPUT_DIR") {
-            config = config.with_debug_output(std::path::PathBuf::from(output_dir));
+            config.debug_output_dir = Some(std::path::PathBuf::from(output_dir));
             if let Ok(interval) = std::env::var("DEBUG_FLUSH_INTERVAL_SECS") {
                 config.debug_flush_interval_secs = interval.parse().unwrap_or(5);
             }
             if let Ok(max_size) = std::env::var("DEBUG_MAX_FILE_SIZE") {
                 config.debug_max_file_size = max_size.parse().ok();
+            }
+            if let Ok(max_files) = std::env::var("DEBUG_MAX_FILES_RETAINED") {
+                if let Ok(max_files_usize) = max_files.parse::<usize>() {
+                    config.debug_max_files_retained = Some(max_files_usize);
+                }
             }
         }
     }

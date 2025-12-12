@@ -463,3 +463,4 @@ async fn test_failure_rate_exact_threshold() {
         "Should NOT trigger backoff below 1% failure rate"
     );
 }
+

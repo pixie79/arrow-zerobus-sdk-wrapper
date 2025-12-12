@@ -26,3 +26,4 @@ else
     echo "❌ Signing failed. Aborting push."
     exit 1
 fi
+
